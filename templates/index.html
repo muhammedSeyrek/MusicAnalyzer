@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Müzik Analiz Uygulaması</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Müzik Tonality ve Analiz Uygulaması</h1>
+        
+        <div class="upload-section">
+            <div class="file-upload">
+                <label for="audioFile" class="custom-file-upload">
+                    <i class="fa fa-music"></i> Müzik Dosyası Seç
+                </label>
+                <input type="file" id="audioFile" accept=".mp3,.wav,.ogg">
+                <span id="fileName">Dosya seçilmedi</span>
+            </div>
+            <button id="analyzeBtn" class="primary-btn" onclick="analyze()">Analiz Et</button>
+        </div>
+        
+        <div id="progressSection" class="progress-section hidden">
+            <h3>Analiz İşleniyor...</h3>
+            <div id="progressBar">
+                <div id="progress">0%</div>
+            </div>
+            <p class="progress-info">Ses dosyası analiz ediliyor, lütfen bekleyiniz...</p>
+        </div>
+        
+        <div id="results" class="results-section hidden">
+            <h2>Analiz Sonuçları</h2>
+            
+            <div class="result-cards">
+                <div class="card">
+                    <h3>Müzik Sistemi</h3>
+                    <p id="system" class="large-text">-</p>
+                    <div class="confidence-meter">
+                        <div class="meter-bar">
+                            <div id="systemConfidence" class="meter-fill"></div>
+                        </div>
+                        <p class="confidence-text">Güven oranı: <span id="confidenceValue">-</span></p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Tonalite / Makam</h3>
+                    <p id="tonality" class="large-text">-</p>
+                    <p id="tonalityAlt" class="description-text">-</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Tempo</h3>
+                    <p id="tempo" class="large-text">-</p>
+                    <p id="tempoDescription" class="description-text">-</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Ritim Yapısı</h3>
+                    <p id="rhythmPattern" class="large-text">-</p>
+                    <p id="beatRegularity" class="description-text">-</p>
+                </div>
+            </div>
+            
+            <div class="timbre-section">
+                <h3>Tını Analizi</h3>
+                <div class="result-cards">
+                    <div class="card">
+                        <h3>Enstrüman Grubu</h3>
+                        <p id="instrumentFamily" class="large-text">-</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Parlaklık</h3>
+                        <div class="brightness-meter">
+                            <div id="brightnessMeter" class="brightness-fill"></div>
+                        </div>
+                        <p id="brightnessValue" class="description-text">-</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Zenginlik</h3>
+                        <div class="richness-meter">
+                            <div id="richnessMeter" class="richness-fill"></div>
+                        </div>
+                        <p id="richnessValue" class="description-text">-</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="graphs-section">
+                <h3>Detaylı Analiz</h3>
+                <div id="graphContainer">
+                    <div class="graph-card">
+                        <h4>Frekans Dağılımı</h4>
+                        <div id="frequencyGraph" class="graph"></div>
+                    </div>
+                    
+                    <div class="graph-card">
+                        <h4>Tempo Analizi</h4>
+                        <div id="tempoGraph" class="graph"></div>
+                    </div>
+                    
+                    <div class="graph-card">
+                        <h4>MFCC Özellikleri</h4>
+                        <div id="mfccGraph" class="graph"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="audio-player">
+                <h3>Ses Dosyası</h3>
+                <audio id="audioPlayer" controls></audio>
+                <p class="player-info">Toplam süre: <span id="duration">-</span></p>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>Müzik Analiz Uygulaması © 2025</p>
+    </footer>
+    
+    <script src="/static/js/scripts.js"></script>
+</body>
+</html>
