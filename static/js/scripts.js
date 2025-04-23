@@ -396,3 +396,123 @@ function showError(message) {
     alert('Hata: ' + message);
     document.getElementById('progressSection').classList.add('hidden');
 }
+
+
+// Function to start the analysis
+function analyze() {
+    if (!currentFile) {
+        alert('Lütfen bir müzik dosyası seçiniz.');
+        return;
+    }
+    
+    // Show progress section
+    document.getElementById('progressSection').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+    
+    // Reset progress bar
+    const progressBar = document.getElementById('progress');
+    progressBar.style.width = '0%';
+    progressBar.textContent = '0%';
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('file', currentFile);
+    
+    // Show fixed progress message
+    document.getElementById('progress').style.width = '10%';
+    document.getElementById('progress').textContent = '10%';
+    document.querySelector('.progress-info').textContent = 'Dosya yükleniyor ve işleniyor. Bu işlem birkaç dakika sürebilir...';
+    
+    // Submit the file for analysis
+    fetch('/analyze', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+        
+        // Store the filename for retrieving results later
+        currentFileName = data.filename;
+        
+        // Start polling for results instead of SSE
+        document.getElementById('progress').style.width = '30%';
+        document.getElementById('progress').textContent = '30%';
+        document.querySelector('.progress-info').textContent = 'Dosya analiz ediliyor. Lütfen bekleyin...';
+        
+        // Başlangıç gecikme değeri
+        const initialDelay = 5000; // 5 saniye
+        
+        // İlk kontrol için zamanlayıcı kur
+        setTimeout(() => pollForResults(currentFileName, initialDelay), initialDelay);
+    })
+    .catch(error => {
+        showError('Analysis request failed: ' + error);
+    });
+}
+
+
+// Function to poll for results with exponential backoff
+function pollForResults(filename, delay) {
+    fetch(`/result/${filename}`)
+        .then(response => response.json())
+        .then(data => {
+            // Eğer result.json dosyası henüz oluşturulmadıysa veya hata varsa
+            if (data.error && data.error.includes("Results not found")) {
+                // Progress bar'ı güncelle
+                const currentProgress = parseInt(document.getElementById('progress').style.width);
+                const newProgress = Math.min(currentProgress + 5, 95); // Maximum 95%
+                document.getElementById('progress').style.width = `${newProgress}%`;
+                document.getElementById('progress').textContent = `${newProgress}%`;
+                
+                // Exponential backoff - her seferinde bekleme süresini arttır (max 15 saniye)
+                const nextDelay = Math.min(delay * 1.5, 15000);
+                document.querySelector('.progress-info').textContent = `Analiz devam ediyor... (${Math.round(nextDelay/1000)} sn sonra tekrar kontrol edilecek)`;
+                
+                // Tekrar kontrol et
+                setTimeout(() => pollForResults(filename, nextDelay), nextDelay);
+            } 
+            // Diğer hatalar
+            else if (data.error) {
+                showError(data.error);
+                return;
+            }
+            // Sonuçlar hazır!
+            else {
+                // 100% göster
+                document.getElementById('progress').style.width = '100%';
+                document.getElementById('progress').textContent = '100%';
+                document.querySelector('.progress-info').textContent = 'Analiz tamamlandı!';
+                
+                // Kısa bir gecikme ile sonuçları göster
+                setTimeout(() => {
+                    // Hide progress section and show results
+                    document.getElementById('progressSection').classList.add('hidden');
+                    document.getElementById('results').classList.remove('hidden');
+                    
+                    // Display basic results
+                    displayBasicResults(data);
+                    
+                    // Display timbre results
+                    displayTimbreResults(data);
+                    
+                    // Create visualizations
+                    createVisualizations(data);
+                    
+                    // Format and display duration
+                    displayDuration(data.duration);
+                }, 1000);
+            }
+        })
+        .catch(error => {
+            showError('Failed to fetch results: ' + error);
+        });
+}
+
+// Function to fetch and display analysis results (legacy function kept for compatibility)
+function fetchResults(filename) {
+    pollForResults(filename, 5000);
+}

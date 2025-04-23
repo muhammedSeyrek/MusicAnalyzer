@@ -121,6 +121,59 @@ def get_result(filename):
     else:
         return jsonify({"error": "Results not found"})
 
+
+@app.route('/analyze', methods=['POST'])
+def analyze():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"})
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"})
+    
+    # Benzersiz bir dosya adı oluştur (zaman damgası ekleyerek)
+    timestamp = int(time.time())
+    base_filename = secure_filename(file.filename)
+    filename_parts = os.path.splitext(base_filename)
+    unique_filename = f"{filename_parts[0]}_{timestamp}{filename_parts[1]}"
+    
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+    file.save(filepath)
+    
+    # Dosya analizi için arka plan thread'i oluştur
+    def run_analysis():
+        try:
+            # İlerleme takibi olmadan analiz et (SSE kullanmıyoruz artık)
+            result = analyze_music(filepath, None)
+            
+            # Sonuçları bir JSON dosyasına kaydet
+            result_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{os.path.splitext(unique_filename)[0]}_result.json")
+            with open(result_path, 'w') as f:
+                # Özel JSON encoder kullanarak tüm veri tiplerini işle
+                json.dump(result, f, cls=CustomJSONEncoder)
+                
+        except Exception as e:
+            print(f"Analysis error: {e}")
+            # Hata durumunda boş bir sonuç dosyası oluştur
+            error_result = {"error": f"Analysis failed: {str(e)}"}
+            result_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{os.path.splitext(unique_filename)[0]}_result.json")
+            with open(result_path, 'w') as f:
+                json.dump(error_result, f)
+    
+    # Thread'i başlat ve hemen yanıt döndür
+    thread = threading.Thread(target=run_analysis)
+    thread.daemon = True
+    thread.start()
+    
+    # Sadece dosya adını döndür, sonuçlar hazır olduğunda istemci kontrol edecek
+    return jsonify({"status": "processing", "filename": unique_filename})
+
+
+
+
+
+
+
 if __name__ == '__main__':
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
