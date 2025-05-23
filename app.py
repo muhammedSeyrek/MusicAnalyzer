@@ -777,7 +777,7 @@ def main():
             
             with tab1:
                 try:
-                    st.subheader("Genel Özellikler")
+                    st.subheader("Genel Bilgiler")
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:

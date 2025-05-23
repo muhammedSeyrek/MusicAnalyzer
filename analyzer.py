@@ -10,7 +10,7 @@ from scipy.stats import skew
 def detect_tonality(freqs):
     """
     Detect tonality by comparing frequency ratios to known musical systems
-    Enhanced with pattern recognition techniques
+    Enhanced with pattern recognition techniques for Turkish music
     """
     # Define Western major and minor scales
     western_ratios = {
@@ -24,23 +24,40 @@ def detect_tonality(freqs):
         'B Minor': [1.123, 1.190, 1.334, 1.499, 1.589, 1.784, 2.0]
     }
     
-    # Define Eastern makams (Turkish music) with more precise microtone ratios
-    # Added more specific ratios including 1/9 intervals as requested
+    # Define Eastern makams with precise microtonal ratios
     eastern_ratios = {
-        'Hicaz': [1.0, 1.055, 1.125, 1.25, 1.33, 1.5, 1.67, 1.8, 2.0],
-        'Rast': [1.0, 1.111, 1.25, 1.33, 1.5, 1.67, 1.87, 2.0],
-        'Nihavend': [1.0, 1.11, 1.18, 1.33, 1.5, 1.59, 1.78, 2.0],
-        'Hüseyni': [1.0, 1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
-        'Segah': [1.0, 1.055, 1.2, 1.32, 1.5, 1.66, 1.78, 2.0],
-        'Uşşak': [1.0, 1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
-        'Saba': [1.0, 1.055, 1.19, 1.31, 1.42, 1.59, 1.75, 2.0],
-        # Added more makams with microtonal characteristics
-        'Kürdi': [1.0, 1.11, 1.18, 1.33, 1.5, 1.6, 1.8, 2.0],
-        'Hicazkar': [1.0, 1.055, 1.125, 1.25, 1.33, 1.425, 1.5, 1.67, 1.8, 2.0],
-        'Karcigar': [1.0, 1.111, 1.25, 1.33, 1.44, 1.6, 1.8, 2.0],
-        'Buselik': [1.0, 1.125, 1.25, 1.33, 1.5, 1.67, 1.875, 2.0]
+        'Rast': {
+            'ratios': [1.0, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
+            'microtones': [1.055, 1.111, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
+            'characteristic_intervals': [(1.125, 'T'), (1.25, 'T'), (1.333, 'T')],
+            'seyir': 'ascending'
+        },
+        'Nihavend': {
+            'ratios': [1.0, 1.125, 1.2, 1.333, 1.5, 1.6, 1.8, 2.0],
+            'microtones': [1.055, 1.111, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
+            'characteristic_intervals': [(1.2, 'T'), (1.333, 'T'), (1.5, 'T')],
+            'seyir': 'descending'
+        },
+        'Hicaz': {
+            'ratios': [1.0, 1.055, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
+            'microtones': [1.055, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
+            'characteristic_intervals': [(1.055, 'M'), (1.125, 'M'), (1.25, 'T')],
+            'seyir': 'ascending'
+        },
+        'Saba': {
+            'ratios': [1.0, 1.055, 1.19, 1.31, 1.42, 1.59, 1.75, 2.0],
+            'microtones': [1.055, 1.19, 1.31, 1.42, 1.59, 1.75, 2.0],
+            'characteristic_intervals': [(1.055, 'M'), (1.19, 'M'), (1.31, 'M')],
+            'seyir': 'descending'
+        },
+        'Hüseyni': {
+            'ratios': [1.0, 1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
+            'microtones': [1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
+            'characteristic_intervals': [(1.111, 'T'), (1.25, 'T'), (1.35, 'M')],
+            'seyir': 'ascending'
+        }
     }
-    
+
     # Filter out extreme values and zero frequencies
     freqs = [f for f in freqs if 20 < f < 20000]
     
@@ -48,190 +65,103 @@ def detect_tonality(freqs):
         return {
             'western_tonality': 'Unknown',
             'eastern_makam': 'Unknown',
-            'is_western': True,  # Default to Western when uncertain
-            'western_confidence': 0.5,
-            'eastern_confidence': 0.5,
-            'microtonal_ratio': 0.0  # Add default value to prevent KeyError
+            'is_western': False,
+            'western_confidence': 0.0,
+            'eastern_confidence': 0.0,
+            'microtonal_ratio': 0.0
         }
     
-    # Sort frequencies from low to high to get a clearer pattern
+    # Sort frequencies and calculate ratios
     freqs.sort()
-    
-    # Calculate all possible frequency ratios to create a ratio histogram
     ratio_matrix = []
     for i in range(len(freqs)):
         for j in range(i+1, len(freqs)):
             ratio = freqs[j] / freqs[i]
-            # Filter out extreme ratios
             if 1.0 < ratio < 2.1:
                 ratio_matrix.append(ratio)
-    
-    # Create a histogram of the ratios to find common patterns
-    # This will help identify recurring interval patterns that are characteristic
-    # of specific scales or makams
+
+    # Enhanced microtonal analysis
+    def analyze_microtones(ratios):
+        microtonal_intervals = []
+        koma_positions = [i/9 for i in range(1, 9)]  # Türk müziği koma pozisyonları
+        
+        for ratio in ratios:
+            for koma in koma_positions:
+                if any(abs(ratio - (1 + koma)) < 0.015):
+                    microtonal_intervals.append((ratio, koma))
+        
+        return microtonal_intervals
+
+    # Analyze microtonal content
+    microtonal_intervals = analyze_microtones(ratio_matrix)
+    microtonal_ratio = len(microtonal_intervals) / max(1, len(ratio_matrix))
+
+    # Create histogram for pattern analysis
     hist, bin_edges = np.histogram(ratio_matrix, bins=100, range=(1.0, 2.1))
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    
-    # Find peaks in the histogram to identify the most common intervals
-    # This is a key pattern recognition technique
-    peaks, _ = scipy.signal.find_peaks(hist, height=max(hist.max() * 0.2, 2))
-    peak_ratios = bin_centers[peaks]
-    peak_values = hist[peaks]
-    
-    # Calculate pattern weights based on peak heights
-    pattern_weights = peak_values / np.sum(peak_values)
-    
-    # Cluster the peaks to group similar intervals
-    # This helps identify the characteristic intervals in the music
-    if len(peak_ratios) > 2:
-        try:
-            n_clusters = min(len(peak_ratios), 5)  # Cap at 5 clusters
-            kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(peak_ratios.reshape(-1, 1))
-            cluster_centers = kmeans.cluster_centers_.flatten()
-            cluster_sizes = np.bincount(kmeans.labels_)
-            
-            # Weight the clusters by size and corresponding peak heights
-            cluster_weights = np.zeros(n_clusters)
-            for i, label in enumerate(kmeans.labels_):
-                cluster_weights[label] += pattern_weights[i]
-                
-            # Sort clusters by weight
-            sorted_indices = np.argsort(cluster_weights)[::-1]
-            dominant_ratios = cluster_centers[sorted_indices]
-        except:
-            # Fallback if clustering fails
-            sorted_indices = np.argsort(peak_values)[::-1]
-            dominant_ratios = peak_ratios[sorted_indices[:5]]
+
+    # Enhanced pattern recognition for Turkish music
+    def analyze_makam_patterns(ratios, makam_def):
+        matches = 0
+        total_patterns = len(makam_def['characteristic_intervals'])
+        
+        for target_ratio, interval_type in makam_def['characteristic_intervals']:
+            for ratio in ratios:
+                if interval_type == 'M' and any(abs(ratio - (target_ratio + k/9)) < 0.015 for k in range(-1, 2)):
+                    matches += 1
+                    break
+                elif interval_type == 'T' and abs(ratio - target_ratio) < 0.02:
+                    matches += 1
+                    break
+        
+        return matches / total_patterns if total_patterns > 0 else 0
+
+    # Calculate makam confidence scores
+    makam_scores = {}
+    for makam_name, makam_def in eastern_ratios.items():
+        pattern_score = analyze_makam_patterns(ratio_matrix, makam_def)
+        microtonal_match = sum(1 for m in microtonal_intervals if any(abs(m[0] - r) < 0.015 for r in makam_def['microtones']))
+        microtonal_score = microtonal_match / len(makam_def['microtones'])
+        
+        # Combined score with higher weight on microtonal content for Turkish music
+        makam_scores[makam_name] = (pattern_score * 0.4 + microtonal_score * 0.6)
+
+    # Find best matching makam
+    best_makam = max(makam_scores.items(), key=lambda x: x[1])
+
+    # Western music analysis (simplified for contrast)
+    western_scores = {}
+    for scale_name, scale_ratios in western_ratios.items():
+        matches = sum(1 for r in ratio_matrix if any(abs(r - sr) < 0.02 for sr in scale_ratios))
+        western_scores[scale_name] = matches / len(scale_ratios)
+
+    best_western = max(western_scores.items(), key=lambda x: x[1])
+
+    # System classification logic
+    is_western = False
+    western_conf = best_western[1]
+    eastern_conf = best_makam[1]
+
+    # Bias towards Eastern music when significant microtonal content is found
+    if microtonal_ratio > 0.15:
+        eastern_conf *= (1 + microtonal_ratio)
+        western_conf *= (1 - microtonal_ratio)
+
+    # Final decision with strong bias towards Turkish music characteristics
+    if microtonal_ratio > 0.15 or eastern_conf > western_conf:
+        is_western = False
+        western_conf *= 0.5  # Reduce western confidence when Turkish characteristics are found
     else:
-        dominant_ratios = peak_ratios
-    
-    # Calculate how well the observed ratio patterns match each musical system
-    def pattern_based_system_match(dominant_ratios, systems):
-        errors = {}
-        for name, system_ratios in systems.items():
-            # For each dominant ratio, find the closest match in the system
-            error = 0
-            for i, r in enumerate(dominant_ratios):
-                # Find the closest ratio in this musical system
-                min_diff = min(abs(r - sr) for sr in system_ratios)
-                # Weight the error by the ratio's importance (earlier ratios are more dominant)
-                weight = 1.0 / (i + 1)
-                error += min_diff * weight
-                
-            errors[name] = error / min(len(dominant_ratios), 5)  # Normalize
-        
-        # Return the system with minimum error
-        if errors:
-            return min(errors.items(), key=lambda x: x[1])
-        return ('Unknown', float('inf'))
-    
-    # Check for 1/9 interval patterns common in Eastern music
-    # These are very small intervals (microtones) characteristic of makams
-    microtonal_intervals = [r for r in ratio_matrix if any(abs(r - (1 + i/9)) < 0.015 for i in range(1, 5))]
-    microtonal_ratio = len(microtonal_intervals) / max(1, len(ratio_matrix))
-    
-    # RADICAL CHANGE: Microtonal threshold and importance dramatically reduced
-    # This prevents falsely classifying Western music as Eastern
-    # Microtones are very specific to Eastern music and their absence is a strong Western indicator
-    if microtonal_ratio < 0.20:  # If less than 20% of intervals have microtones
-        microtonal_ratio = 0.0    # Assume no microtones (Western music characteristic)
-    
-    # Traditional ratio analysis as a fallback
-    def closest_system(ratios, systems):
-        errors = {}
-        for name, system_ratios in systems.items():
-            # Calculate how well the observed ratios match this system
-            error = sum(min(abs(r - sr) for sr in system_ratios) for r in ratios)
-            errors[name] = error / max(1, len(ratios))
-        
-        # Return the system with minimum error
-        if errors:
-            return min(errors.items(), key=lambda x: x[1])
-        return ('Unknown', float('inf'))
-    
-    # Find the best matching western and eastern systems using pattern recognition
-    western_best = pattern_based_system_match(dominant_ratios, western_ratios)
-    eastern_best = pattern_based_system_match(dominant_ratios, eastern_ratios)
-    
-    # Fall back to traditional analysis if pattern-based approach fails
-    if western_best[1] > 0.2 and eastern_best[1] > 0.2:
-        western_best = closest_system(ratio_matrix, western_ratios)
-        eastern_best = closest_system(ratio_matrix, eastern_ratios)
-    
-    # Adjust for microtonal content - if high microtonal content is found,
-    # increase confidence in eastern music identification
-    eastern_bias = 0.0
-    # CRITICAL CHANGE: Only add eastern bias with extremely high microtonal content
-    if microtonal_ratio > 0.25:  # Increased threshold from 0.15 to 0.25
-        eastern_bias = microtonal_ratio * 0.3  # Further reduced bias from 0.5 to 0.3
-    
-    # Calculate final confidences with adjustments
-    western_conf = 1.0 / (1.0 + western_best[1])
-    eastern_conf = 1.0 / (1.0 + eastern_best[1]) * (1.0 + eastern_bias)
-    
-    # OVERRIDE FOR C MAJOR - COMMON IN ROCK/POP MUSIC
-    # Many rock songs are in C Major - if close, prefer C Major
-    if western_best[0] != 'C Major':
-        c_major_error = 0
-        for r in dominant_ratios:
-            c_major_error += min(abs(r - sr) for sr in western_ratios['C Major'])
-        c_major_score = 1.0 / (1.0 + c_major_error / len(dominant_ratios))
-        
-        if c_major_score > 0.7 * western_conf:  # If C Major is at least 70% as good as the best match
-            western_best = ('C Major', western_best[1] * 0.9)  # Slightly better score
-            western_conf = 1.0 / (1.0 + western_best[1])  # Recalculate confidence
-    
-    # Add detection for Western rock/pop chord progressions (power chords, perfect 4ths/5ths)
-    # Rock music often has strong perfect 5th (1.5) and 4th (1.33) intervals
-    rock_intervals = [r for r in ratio_matrix if (abs(r - 1.5) < 0.02 or abs(r - 1.33) < 0.02)]
-    rock_ratio = len(rock_intervals) / max(1, len(ratio_matrix))
-    
-    # Strong presence of perfect 5ths is characteristic of rock/pop music - increase weight
-    if rock_ratio > 0.1:  # If more than 10% of intervals are perfect 4ths or 5ths
-        western_conf += rock_ratio * 1.5  # Increased from 1.0 to 1.5
-    
-    # Detect consistent major/minor triads (Western harmony)
-    triad_intervals = [
-        [r for r in ratio_matrix if abs(r - 1.25) < 0.02],  # Major third
-        [r for r in ratio_matrix if abs(r - 1.2) < 0.02],   # Minor third
-        [r for r in ratio_matrix if abs(r - 1.5) < 0.02]    # Perfect fifth
-    ]
-    
-    # Increase weight for Western harmony detection
-    if all(len(intervals) > 0 for intervals in triad_intervals):
-        western_conf += 0.6  # Increased from 0.4 to 0.6
-    
-    # CRITICAL CHANGE: Extreme Western bias for modern production
-    # The vast majority of commercial modern music is Western
-    # Apply a stronger default bias toward Western music for songs with low microtonal content
-    if microtonal_ratio < 0.10:  # Increased threshold
-        western_conf *= 2.0  # Dramatically increased from 1.5 to 2.0
-    
-    # Add a base Western bias - Most music is Western
-    western_conf += 0.3  # Add a constant Western bias
-    
-    # Determine if the music is more western or eastern - with a stronger bias toward Western
-    # This overrides the previous detection if the confidence scores are even remotely close
-    if western_conf > eastern_conf * 0.7:  # Lowered threshold from 0.8 to 0.7 - Western wins more easily
         is_western = True
-    else:
-        is_western = western_conf > eastern_conf
-    
-    # FINAL SANITY CHECK: 
-    # If no strong evidence for Eastern music (very high eastern_conf),
-    # default to Western as it's the more common case
-    if eastern_conf < 1.5 and not is_western:
-        is_western = True
-    
+        eastern_conf *= 0.5
+
     return {
-        'western_tonality': western_best[0],
-        'eastern_makam': eastern_best[0],
+        'western_tonality': best_western[0],
+        'eastern_makam': best_makam[0],
         'is_western': is_western,
         'western_confidence': western_conf,
         'eastern_confidence': eastern_conf,
-        'microtonal_ratio': microtonal_ratio,
-        'rock_ratio': rock_ratio if 'rock_ratio' in locals() else 0,
-        'dominant_ratios': dominant_ratios.tolist() if hasattr(dominant_ratios, 'tolist') else []
+        'microtonal_ratio': microtonal_ratio
     }
 
 def analyze_rhythm(y, sr):
@@ -378,243 +308,75 @@ def analyze_rhythm(y, sr):
 
 def analyze_timbre(y, sr):
     """
-    Analyze the timbre characteristics of the music with enhanced pattern recognition
+    Enhanced timbre analysis with Turkish instrument recognition
     """
-    # Extract MFCC features for timbre analysis with better parameters
-    n_mfcc = 13  # Standard number for music analysis
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc, n_fft=2048, hop_length=512)
+    # Turkish music instrument characteristics
+    turkish_instruments = {
+        'Ney': {
+            'frequency_range': (200, 1000),
+            'harmonic_ratio': 0.7,
+            'attack_time': 0.1
+        },
+        'Ud': {
+            'frequency_range': (70, 700),
+            'harmonic_ratio': 0.8,
+            'attack_time': 0.05
+        },
+        'Kanun': {
+            'frequency_range': (100, 1200),
+            'harmonic_ratio': 0.9,
+            'attack_time': 0.02
+        },
+        'Tanbur': {
+            'frequency_range': (80, 800),
+            'harmonic_ratio': 0.75,
+            'attack_time': 0.04
+        }
+    }
+
+    # Extract features
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
     
-    # Calculate statistics
-    mfcc_mean = np.mean(mfcc, axis=1)
-    mfcc_var = np.var(mfcc, axis=1)
-    mfcc_delta = np.mean(np.abs(np.diff(mfcc, axis=1)), axis=1)  # Add delta features
-    
-    # Calculate spectral centroid (brightness)
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    brightness = np.mean(spectral_centroid) / (sr/2)  # Normalize by Nyquist frequency
-    
-    # Calculate spectral contrast (richness)
-    contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
-    richness = np.mean(contrast)
-    
-    # Calculate spectral flatness (noise vs. tone)
-    flatness = librosa.feature.spectral_flatness(y=y)[0]
-    tonal_quality = 1.0 - np.mean(flatness)  # Higher value = more tonal
-    
-    # Calculate spectral bandwidth (spread of frequencies)
-    bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)[0]
-    spectral_spread = np.mean(bandwidth) / (sr/2)  # Normalize
-    
-    # Calculate zero crossing rate (indicative of percussiveness/noisiness)
-    zcr = librosa.feature.zero_crossing_rate(y)[0]
-    percussiveness = np.mean(zcr)
-    
-    # Calculate spectral rolloff (distribution of frequencies)
-    rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)[0]
-    rolloff_mean = np.mean(rolloff) / (sr/2)  # Normalize by Nyquist frequency
-    
-    # *** ENHANCED DETECTION FOR ROCK MUSIC INSTRUMENTS ***
-    
-    # Detect distorted electric guitar (common in rock music)
-    # Electric guitars show high spectral centroid, high contrast, and specific harmonic patterns
+    # Analyze harmonic content
     harmonic = librosa.effects.harmonic(y)
-    harmonic_rolloff = librosa.feature.spectral_rolloff(y=harmonic, sr=sr)[0]
-    harmonic_contrast = librosa.feature.spectral_contrast(y=harmonic, sr=sr)
-    
-    # Electric guitar detection metrics - LOWERED THRESHOLDS FOR BETTER DETECTION
-    # Rock guitars typically have signature mid-range frequency boost
-    mid_contrast = np.mean(harmonic_contrast[1:3])
-    high_harmonic_contrast = mid_contrast > 2.0  # Reduced from 4.0 to 2.0
-    
-    # Strong harmonic content in upper mid-range - characteristic of electric guitar
-    high_harmonic_content = np.mean(harmonic_rolloff) / (sr/2) > 0.25  # Reduced from 0.3 to 0.25
-    
-    # Distortion signature - "fuzzy" high frequency content
-    distortion_likely = (np.percentile(flatness, 75) > 0.008 and  # Slightly reduced from 0.01
-                         spectral_spread > 0.4 and                 # Added spectral spread check
-                         brightness > 0.1)                         # Added brightness check
-    
-    # Combine metrics to detect electric guitar - RELAXED CONDITIONS
-    has_electric_guitar = (high_harmonic_contrast or high_harmonic_content) and distortion_likely
-    
-    # Additional check for the characteristic "bite" of rock guitar
-    # Look for specific frequency ranges where electric guitars typically dominate
-    guitar_frequency_signature = False
-    
-    # Create a spectrogram to look at energy distribution 
-    D = np.abs(librosa.stft(y))
-    S_db = librosa.amplitude_to_db(D, ref=np.max)
-    
-    # Define frequency bands where guitars typically have strong presence
-    # Mid-range frequencies (500Hz - 4kHz) are dominant in rock guitar
+    harmonic_ratio = np.mean(np.abs(harmonic)) / np.mean(np.abs(y))
+
+    # Get frequency range
     freqs = librosa.fft_frequencies(sr=sr)
-    mid_band_indices = np.where((freqs >= 500) & (freqs <= 4000))[0]
-    high_band_indices = np.where((freqs > 4000) & (freqs <= 8000))[0]
-    
-    # Calculate energy in mid and high frequency bands
-    if len(mid_band_indices) > 0 and len(high_band_indices) > 0:
-        mid_energy = np.mean(np.mean(D[mid_band_indices, :]))
-        high_energy = np.mean(np.mean(D[high_band_indices, :]))
-        
-        # Rock guitar usually has strong mid-range energy relative to high frequencies
-        if mid_energy > high_energy * 0.8:
-            guitar_frequency_signature = True
-    
-    # Update electric guitar detection
-    if guitar_frequency_signature and (high_harmonic_contrast or distortion_likely):
-        has_electric_guitar = True
-    
-    # *** ENHANCED ROCK DRUM DETECTION ***
-    
-    # Extract percussive component for drum analysis
-    percussive = librosa.effects.percussive(y, margin=8.0)  # Increased margin for better percussion isolation
-    
-    # Onset detection - look for strong rhythmic hits (characteristic of rock drums)
-    onset_env = librosa.onset.onset_strength(y=percussive, sr=sr)
-    onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
-    
-    # Rock drums detection metrics
-    drum_transients = np.percentile(zcr, 90) > 0.12  # Reduced from 0.15 to 0.12
-    wide_spectrum = spectral_spread > 0.45           # Reduced from 0.5 to 0.45
-    
-    # Strong onsets are characteristic of rock drums
-    strong_onsets = len(onset_frames) > 0 and np.max(onset_env) > 0.4
-    
-    # Rhythm regularity check - rock drums typically have regular beat patterns
-    if len(onset_frames) > 4:
-        onset_times = librosa.frames_to_time(onset_frames, sr=sr)
-        onset_intervals = np.diff(onset_times)
-        onset_regularity = 1.0 - (np.std(onset_intervals) / np.mean(onset_intervals))
-    else:
-        onset_regularity = 0
-    
-    # Bass drum detection - important for rock music
-    has_bass_drum = False
+    spec = np.abs(librosa.stft(y))
+    freq_range = (np.min(freqs[spec.mean(axis=1) > spec.mean()]),
+                 np.max(freqs[spec.mean(axis=1) > spec.mean()]))
+
+    # Calculate attack time
+    onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env)
     if len(onset_frames) > 0:
-        # For each onset, check if there's significant low-frequency energy
-        low_freqs = np.where(freqs < 200)[0]  # Bass drum frequencies
-        if len(low_freqs) > 0:
-            for frame in onset_frames:
-                if frame < D.shape[1]:
-                    low_energy = np.mean(D[low_freqs, frame])
-                    if low_energy > np.mean(D[:, frame]) * 1.2:  # Strong bass content
-                        has_bass_drum = True
-                        break
-    
-    # Combine metrics for rock drums detection - RELAXED CONDITIONS
-    has_rock_drums = (drum_transients or wide_spectrum) and (strong_onsets or has_bass_drum)
-    
-    # Final check - if rhythm is regular and we have transients, likely rock drums
-    if onset_regularity > 0.6 and strong_onsets:
-        has_rock_drums = True
-    
-    # Pattern recognition for instrument classification
-    # Use combinations of spectral features to identify instrument families
-    features_vector = np.array([
-        brightness, richness, tonal_quality, spectral_spread, 
-        percussiveness, rolloff_mean
-    ])
-    
-    # Detect common instrument patterns using heuristics
-    # These are based on common spectral characteristics of instrument families
-    if tonal_quality > 0.9 and brightness > 0.4 and richness > 6:
-        instrument_family = "Brass"
-    elif tonal_quality > 0.85 and brightness > 0.3 and brightness < 0.45 and richness > 3:
-        instrument_family = "String"
-    elif percussiveness > 0.1 and spectral_spread > 0.6:
-        instrument_family = "Percussion"
-    elif tonal_quality > 0.8 and brightness < 0.25 and richness < 3:
-        instrument_family = "Woodwind"
-    elif tonal_quality < 0.7 and percussiveness > 0.05:
-        instrument_family = "Electronic"
-    elif tonal_quality > 0.9 and brightness < 0.3 and richness < 4:
-        instrument_family = "Vocal"
+        attack_time = librosa.frames_to_time(onset_frames[1] - onset_frames[0], sr=sr)
     else:
-        instrument_family = "Mixed"
-    
-    # Adjust instrument family if we detected electric guitar or rock drums
-    if has_electric_guitar:
-        instrument_family = "Electric"
-    elif has_rock_drums and instrument_family == "Percussion":
-        instrument_family = "Rock Percussion"
-    
-    # Detect rock band instrumentation by combining features
-    has_rock_band = has_electric_guitar and has_rock_drums
-    
-    # Detect traditional vs. modern instrumentation through pattern recognition
-    # Using spectral characteristics and their variability
-    modern_score = 0
-    traditional_score = 0
-    
-    # Check for characteristics of traditional instruments
-    if tonal_quality > 0.85 and spectral_spread < 0.5:
-        traditional_score += 2
-    
-    # Check for consistent timbre (often found in traditional music)
-    if np.std(spectral_centroid) < np.mean(spectral_centroid) * 0.3:
-        traditional_score += 1
-    
-    # Check for modern production traits
-    if percussiveness > 0.08 and rolloff_mean > 0.75:
-        modern_score += 2
-    
-    # Check for wide dynamic range (often found in modern productions)
-    if np.std(librosa.feature.rms(y=y)[0]) > np.mean(librosa.feature.rms(y=y)[0]) * 0.5:
-        modern_score += 1
-    
-    # If we detected electric guitar or rock drums, strongly favor modern score
-    if has_electric_guitar or has_rock_drums:
-        modern_score += 3
-    
-    # Determine if traditional or modern instrumentation is more likely
-    instrument_era = "Traditional" if traditional_score > modern_score else "Modern"
-    
-    # Eastern instrument detection specific to Turkish music
-    eastern_instrument_score = 0
-    
-    # Check for characteristics of specific Eastern instruments
-    # Oud: rich in harmonics with distinctive decay pattern
-    if tonal_quality > 0.8 and richness > 4 and brightness > 0.25 and brightness < 0.4:
-        eastern_instrument_score += 1
-    
-    # Ney: breathy with specific harmonic structure
-    if tonal_quality > 0.7 and brightness < 0.25 and flatness.mean() > 0.01:
-        eastern_instrument_score += 1
-    
-    # Kanun: bright attack with rich sustain
-    if tonal_quality > 0.85 and brightness > 0.35 and np.std(contrast[0]) > 2:
-        eastern_instrument_score += 1
-    
-    # Darbuka/other percussion: characteristic attack and decay
-    if percussiveness > 0.08 and spectral_spread > 0.5:
-        eastern_instrument_score += 1
-    
-    # If we detected electric guitar or rock drums, penalize eastern score more aggressively
-    if has_electric_guitar or has_rock_drums:
-        eastern_instrument_score = max(0, eastern_instrument_score - 3)  # Increased penalty from 2 to 3
-    
-    # If we detected a rock band, eastern instruments are extremely unlikely
-    if has_rock_band:
-        eastern_instrument_score = 0
-    
-    has_eastern_instruments = eastern_instrument_score >= 2
-    
+        attack_time = 0
+
+    # Match with Turkish instruments
+    instrument_scores = {}
+    for inst_name, inst_chars in turkish_instruments.items():
+        freq_match = (freq_range[0] >= inst_chars['frequency_range'][0] * 0.8 and
+                     freq_range[1] <= inst_chars['frequency_range'][1] * 1.2)
+        
+        harmonic_match = abs(harmonic_ratio - inst_chars['harmonic_ratio']) < 0.2
+        attack_match = abs(attack_time - inst_chars['attack_time']) < 0.1
+        
+        score = sum([freq_match, harmonic_match, attack_match]) / 3
+        instrument_scores[inst_name] = score
+
+    # Get detected instruments
+    detected_instruments = [inst for inst, score in instrument_scores.items() if score > 0.6]
+
     return {
-        "brightness": float(brightness),
-        "richness": float(richness),
-        "tonal_quality": float(tonal_quality),
-        "spectral_spread": float(spectral_spread),
-        "percussiveness": float(percussiveness),
-        "instrument_family": instrument_family,
-        "instrument_era": instrument_era,
-        "has_eastern_instruments": has_eastern_instruments,
-        "has_electric_guitar": bool(has_electric_guitar),
-        "has_rock_drums": bool(has_rock_drums),
-        "has_rock_band": bool(has_rock_band),
-        "guitar_frequency_signature": bool(guitar_frequency_signature if 'guitar_frequency_signature' in locals() else False),
-        "bass_drum_detected": bool(has_bass_drum if 'has_bass_drum' in locals() else False),
-        "mfcc_features": mfcc_mean.tolist(),
-        "mfcc_delta": mfcc_delta.tolist()
+        'detected_instruments': detected_instruments,
+        'is_turkish_music': len(detected_instruments) > 0,
+        'harmonic_ratio': harmonic_ratio,
+        'frequency_range': freq_range,
+        'mfcc_features': mfcc.mean(axis=1).tolist()
     }
 
 def extract_patterns(y, sr):
