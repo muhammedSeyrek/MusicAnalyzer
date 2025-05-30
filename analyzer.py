@@ -864,6 +864,157 @@ def create_rhythm_pattern_viz(rhythm_data):
     
     return fig
 
+def create_waveform(y, sr):
+    """
+    Ses dalgası görselleştirmesi
+    """
+    plt.figure(figsize=(10, 4))
+    plt.title('Dalga Formu')
+    plt.xlabel('Zaman (sn)')
+    plt.ylabel('Genlik')
+    librosa.display.waveshow(y, sr=sr)
+    return plt.gcf()
+
+def create_mel_spectrogram(y, sr):
+    """
+    Mel spektrogramı görselleştirmesi
+    """
+    plt.figure(figsize=(10, 4))
+    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
+    S_dB = librosa.power_to_db(S, ref=np.max)
+    img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr)
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Mel Spektrogramı')
+    return plt.gcf()
+
+def create_chroma(y, sr):
+    """
+    Kroma özellikleri görselleştirmesi
+    """
+    plt.figure(figsize=(10, 4))
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+    img = librosa.display.specshow(chroma, y_axis='chroma', x_axis='time')
+    plt.colorbar()
+    plt.title('Kroma Özellikleri')
+    return plt.gcf()
+
+def create_pattern_visualization(y, sr, pattern_period, pattern_density):
+    """
+    Örüntü analizi görselleştirmesi
+    """
+    plt.figure(figsize=(12, 8))
+    
+    # 1. Örüntü yoğunluğu grafiği
+    plt.subplot(2, 2, 1)
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+    rec = librosa.segment.recurrence_matrix(chroma, mode='affinity')
+    img = librosa.display.specshow(rec, aspect='equal')
+    plt.colorbar()
+    plt.title(f'Örüntü Yoğunluğu: {pattern_density:.2f}')
+    
+    # 2. Tempo ve ritim grafiği
+    plt.subplot(2, 2, 2)
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+    times = librosa.times_like(onset_env, sr=sr)
+    plt.plot(times, onset_env)
+    plt.title('Ritim Yapısı')
+    plt.xlabel('Zaman (sn)')
+    plt.ylabel('Vuruş Gücü')
+    
+    # 3. Harmonik yapı
+    plt.subplot(2, 2, 3)
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+    S_harmonic = librosa.feature.melspectrogram(y=y_harmonic, sr=sr)
+    S_harmonic_db = librosa.power_to_db(S_harmonic, ref=np.max)
+    librosa.display.specshow(S_harmonic_db, y_axis='mel', x_axis='time')
+    plt.title('Harmonik Yapı')
+    plt.colorbar(format='%+2.0f dB')
+    
+    # 4. Perküsif yapı
+    plt.subplot(2, 2, 4)
+    S_percussive = librosa.feature.melspectrogram(y=y_percussive, sr=sr)
+    S_percussive_db = librosa.power_to_db(S_percussive, ref=np.max)
+    librosa.display.specshow(S_percussive_db, y_axis='mel', x_axis='time')
+    plt.title('Perküsif Yapı')
+    plt.colorbar(format='%+2.0f dB')
+    
+    plt.tight_layout()
+    return plt.gcf()
+
+def create_detailed_analysis_plots(y, sr, analysis_results):
+    """
+    Detaylı analiz görselleştirmeleri
+    """
+    plt.figure(figsize=(15, 10))
+    
+    # 1. Frekans dağılımı
+    plt.subplot(2, 2, 1)
+    D = np.abs(librosa.stft(y))
+    D_db = librosa.amplitude_to_db(D, ref=np.max)
+    librosa.display.specshow(D_db, y_axis='log', x_axis='time')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Frekans Dağılımı')
+    
+    # 2. Tonalite/Makam analizi
+    plt.subplot(2, 2, 2)
+    scale_analysis = analysis_results['scale_analysis']
+    system_scores = [
+        scale_analysis['detailed_scores']['western_scales'].values(),
+        scale_analysis['detailed_scores']['eastern_makams'].values(),
+        scale_analysis['detailed_scores']['world_scales'].values()
+    ]
+    plt.boxplot(system_scores, labels=['Batı', 'Doğu', 'Dünya'])
+    plt.title('Müzik Sistemi Karşılaştırması')
+    plt.ylabel('Eşleşme Skoru')
+    
+    # 3. MFCC özellikleri
+    plt.subplot(2, 2, 3)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    librosa.display.specshow(mfcc, x_axis='time')
+    plt.colorbar()
+    plt.title('MFCC Özellikleri')
+    
+    # 4. Mikrotonalite analizi
+    plt.subplot(2, 2, 4)
+    cents_deviation = librosa.feature.tonnetz(y=y_harmonic, sr=sr)
+    librosa.display.specshow(cents_deviation, y_axis='tonnetz')
+    plt.colorbar(label='Cent Sapması')
+    plt.title('Mikrotonalite Analizi')
+    
+    plt.tight_layout()
+    return plt.gcf()
+
+def create_instrument_analysis_plot(y, sr, timbre_info):
+    """
+    Enstrüman analizi görselleştirmesi
+    """
+    plt.figure(figsize=(12, 6))
+    
+    # 1. Spektral merkezoid
+    plt.subplot(1, 2, 1)
+    cent = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+    times = librosa.times_like(cent)
+    plt.semilogy(times, cent, label='Spektral Merkezoid')
+    plt.ylabel('Frekans (Hz)')
+    plt.xlabel('Zaman (s)')
+    plt.title('Spektral Özellikler')
+    plt.legend()
+    
+    # 2. Enstrüman karakteristiği
+    plt.subplot(1, 2, 2)
+    features = ['Parlaklık', 'Zenginlik', 'Harmonik Oran']
+    values = [
+        timbre_info.get('brightness', 0),
+        timbre_info.get('richness', 0),
+        timbre_info.get('harmonic_ratio', 0)
+    ]
+    plt.bar(features, values)
+    plt.title('Enstrüman Karakteristiği')
+    plt.ylim(0, 1)
+    
+    plt.tight_layout()
+    return plt.gcf()
+
 def main():
     # Header
     st.markdown('<h1 class="main-header">🎵 Dinamik Müzik Analizi Sistemi</h1>', unsafe_allow_html=True)
