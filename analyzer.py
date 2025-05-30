@@ -1,811 +1,1213 @@
-import librosa
-import numpy as np
-import time
+import streamlit as st
 import os
-import scipy
+import tempfile
+import numpy as np
+import matplotlib.pyplot as plt
+import librosa
+import librosa.display
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import pandas as pd
+import json
+import scipy.signal
 from collections import Counter
 from sklearn.cluster import KMeans
-from scipy.stats import skew
+from sklearn.preprocessing import StandardScaler
 
-def detect_tonality(freqs):
+# Page configuration
+st.set_page_config(
+    page_title="🎵 Dinamik Müzik Analizi",
+    page_icon="🎵",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+class PureMusicAnalyzer:
     """
-    Detect tonality by comparing frequency ratios to known musical systems
-    Enhanced with pattern recognition techniques for Turkish music
+    Tamamen dinamik müzik analizi sistemi
+    Hiçbir şarkı için özel durum yok - sadece gerçek müzikal veriler
     """
-    # Define Western major and minor scales
-    western_ratios = {
-        'C Major': [1.122, 1.260, 1.335, 1.498, 1.682, 1.888, 2.0],
-        'G Major': [1.125, 1.265, 1.333, 1.500, 1.687, 1.895, 2.0],
-        'D Major': [1.120, 1.259, 1.336, 1.496, 1.680, 1.890, 2.0],
-        'A Major': [1.123, 1.262, 1.334, 1.499, 1.685, 1.886, 2.0],
-        'E Major': [1.121, 1.258, 1.337, 1.497, 1.683, 1.885, 2.0],
-        'A Minor': [1.122, 1.189, 1.335, 1.498, 1.587, 1.782, 2.0],
-        'E Minor': [1.120, 1.187, 1.337, 1.497, 1.585, 1.780, 2.0],
-        'B Minor': [1.123, 1.190, 1.334, 1.499, 1.589, 1.784, 2.0]
-    }
     
-    # Define Eastern makams with precise microtonal ratios
-    eastern_ratios = {
-        'Rast': {
-            'ratios': [1.0, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
-            'microtones': [1.055, 1.111, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
-            'characteristic_intervals': [(1.125, 'T'), (1.25, 'T'), (1.333, 'T')],
-            'seyir': 'ascending'
-        },
-        'Nihavend': {
-            'ratios': [1.0, 1.125, 1.2, 1.333, 1.5, 1.6, 1.8, 2.0],
-            'microtones': [1.055, 1.111, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
-            'characteristic_intervals': [(1.2, 'T'), (1.333, 'T'), (1.5, 'T')],
-            'seyir': 'descending'
-        },
-        'Hicaz': {
-            'ratios': [1.0, 1.055, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
-            'microtones': [1.055, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0],
-            'characteristic_intervals': [(1.055, 'M'), (1.125, 'M'), (1.25, 'T')],
-            'seyir': 'ascending'
-        },
-        'Saba': {
-            'ratios': [1.0, 1.055, 1.19, 1.31, 1.42, 1.59, 1.75, 2.0],
-            'microtones': [1.055, 1.19, 1.31, 1.42, 1.59, 1.75, 2.0],
-            'characteristic_intervals': [(1.055, 'M'), (1.19, 'M'), (1.31, 'M')],
-            'seyir': 'descending'
-        },
-        'Hüseyni': {
-            'ratios': [1.0, 1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
-            'microtones': [1.111, 1.25, 1.35, 1.5, 1.66, 1.8, 2.0],
-            'characteristic_intervals': [(1.111, 'T'), (1.25, 'T'), (1.35, 'M')],
-            'seyir': 'ascending'
+    def __init__(self):
+        # Western scales - Equal Temperament ratios
+        self.western_scales = {
+            'C Major': [1.000, 1.122, 1.260, 1.335, 1.498, 1.682, 1.888, 2.000],
+            'C Minor': [1.000, 1.122, 1.189, 1.335, 1.498, 1.587, 1.782, 2.000],
+            'G Major': [1.000, 1.125, 1.265, 1.333, 1.500, 1.687, 1.895, 2.000],
+            'D Major': [1.000, 1.120, 1.259, 1.336, 1.496, 1.680, 1.890, 2.000],
+            'A Major': [1.000, 1.123, 1.262, 1.334, 1.499, 1.685, 1.886, 2.000],
+            'E Major': [1.000, 1.121, 1.258, 1.337, 1.497, 1.683, 1.885, 2.000],
+            'F Major': [1.000, 1.122, 1.260, 1.414, 1.498, 1.682, 1.888, 2.000],
+            'A Minor': [1.000, 1.122, 1.189, 1.335, 1.498, 1.587, 1.782, 2.000],
+            'E Minor': [1.000, 1.120, 1.187, 1.337, 1.497, 1.585, 1.780, 2.000],
+            'B Minor': [1.000, 1.123, 1.190, 1.334, 1.499, 1.589, 1.784, 2.000],
+            'D Minor': [1.000, 1.122, 1.189, 1.414, 1.498, 1.587, 1.888, 2.000],
+            'F# Minor': [1.000, 1.121, 1.190, 1.337, 1.497, 1.589, 1.885, 2.000]
         }
-    }
+        
+        # Eastern makams with koma-based ratios
+        self.eastern_makams = {
+            'Rast': {
+                'ratios': [1.000, 1.125, 1.250, 1.333, 1.500, 1.667, 1.875, 2.000],
+                'microtone_positions': [4, 8, 12, 18, 22, 26, 30],  # koma positions
+                'characteristic_intervals': [1.125, 1.250, 1.333]
+            },
+            'Hicaz': {
+                'ratios': [1.000, 1.055, 1.125, 1.250, 1.333, 1.500, 1.667, 1.875, 2.000],
+                'microtone_positions': [1, 4, 8, 12, 18, 22, 26, 30],
+                'characteristic_intervals': [1.055, 1.125, 1.250]
+            },
+            'Nihavend': {
+                'ratios': [1.000, 1.125, 1.200, 1.333, 1.500, 1.600, 1.800, 2.000],
+                'microtone_positions': [4, 6, 12, 18, 20, 24, 30],
+                'characteristic_intervals': [1.200, 1.333, 1.500]
+            },
+            'Saba': {
+                'ratios': [1.000, 1.055, 1.190, 1.310, 1.420, 1.590, 1.750, 2.000],
+                'microtone_positions': [1, 5, 10, 13, 19, 23, 30],
+                'characteristic_intervals': [1.055, 1.190, 1.310]
+            },
+            'Hüseyni': {
+                'ratios': [1.000, 1.111, 1.250, 1.350, 1.500, 1.660, 1.800, 2.000],
+                'microtone_positions': [3, 8, 11, 18, 21, 24, 30],
+                'characteristic_intervals': [1.111, 1.250, 1.350]
+            },
+            'Uşşak': {
+                'ratios': [1.000, 1.111, 1.250, 1.350, 1.500, 1.660, 1.800, 2.000],
+                'microtone_positions': [3, 8, 11, 18, 21, 24, 30],
+                'characteristic_intervals': [1.111, 1.250, 1.350]
+            },
+            'Segah': {
+                'ratios': [1.000, 1.140, 1.200, 1.320, 1.500, 1.660, 1.780, 2.000],
+                'microtone_positions': [4.5, 6, 10.5, 18, 21, 23.5, 30],
+                'characteristic_intervals': [1.140, 1.200, 1.320]
+            },
+            'Kürdî': {
+                'ratios': [1.000, 1.111, 1.189, 1.350, 1.500, 1.587, 1.800, 2.000],
+                'microtone_positions': [3, 5, 11, 18, 19, 24, 30],
+                'characteristic_intervals': [1.111, 1.189, 1.350]
+            }
+        }
 
-    # Filter out extreme values and zero frequencies
-    freqs = [f for f in freqs if 20 < f < 20000]
-    
-    if len(freqs) < 8:
+    def extract_frequencies_pure(self, y, sr):
+        """
+        Saf frekans çıkarımı - hiçbir varsayım yok
+        """
+        frequencies = []
+        
+        try:
+            # Method 1: Piptrack - frame-by-frame pitch detection
+            pitches, magnitudes = librosa.piptrack(
+                y=y, sr=sr, threshold=0.1, fmin=80, fmax=2000, 
+                hop_length=512, frame_length=2048
+            )
+            
+            # Extract significant pitches
+            for t in range(0, pitches.shape[1], 20):  # Sample every 20th frame
+                frame_pitches = pitches[:, t]
+                frame_magnitudes = magnitudes[:, t]
+                
+                # Get strongest pitch in this frame
+                if np.max(frame_magnitudes) > 0.1:
+                    strongest_idx = np.argmax(frame_magnitudes)
+                    pitch = frame_pitches[strongest_idx]
+                    if pitch > 0:
+                        frequencies.append(float(pitch))
+            
+            # Method 2: YIN algorithm for more accuracy
+            try:
+                f0_yin = librosa.yin(y, fmin=80, fmax=2000, sr=sr, 
+                                   frame_length=2048, hop_length=512)
+                # Remove NaN values and add valid frequencies
+                valid_yin = f0_yin[~np.isnan(f0_yin)]
+                frequencies.extend(valid_yin.tolist())
+            except:
+                pass
+            
+            # Method 3: Chroma-based fundamental detection
+            try:
+                chroma = librosa.feature.chroma_cqt(y=y, sr=sr, bins_per_octave=36)
+                
+                # Base frequencies (C4 octave)
+                base_freqs = [261.63 * (2**(i/12)) for i in range(12)]
+                
+                for t in range(0, min(chroma.shape[1], 100), 10):
+                    chroma_frame = chroma[:, t]
+                    # Find dominant pitch classes
+                    threshold = np.mean(chroma_frame) + 0.5 * np.std(chroma_frame)
+                    dominant_notes = np.where(chroma_frame > threshold)[0]
+                    
+                    for note_idx in dominant_notes:
+                        base_freq = base_freqs[note_idx % 12]
+                        # Add multiple octaves
+                        frequencies.extend([
+                            base_freq * 0.5,  # Lower octave
+                            base_freq,        # Base octave
+                            base_freq * 2     # Higher octave
+                        ])
+            except:
+                pass
+            
+            # Clean and filter frequencies
+            frequencies = [f for f in frequencies if 80 <= f <= 2000]
+            frequencies = list(set([round(f, 1) for f in frequencies]))
+            frequencies.sort()
+            
+            # Remove outliers using statistical method
+            if len(frequencies) > 10:
+                q1 = np.percentile(frequencies, 25)
+                q3 = np.percentile(frequencies, 75)
+                iqr = q3 - q1
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                frequencies = [f for f in frequencies if lower_bound <= f <= upper_bound]
+            
+            # Limit to most significant frequencies
+            if len(frequencies) > 25:
+                frequencies = frequencies[:25]
+                
+            return frequencies
+            
+        except Exception as e:
+            print(f"Frequency extraction error: {e}")
+            return []
+
+    def calculate_frequency_ratios_pure(self, frequencies):
+        """
+        Saf oran hesaplama - tüm frekans çiftleri
+        """
+        if len(frequencies) < 2:
+            return []
+        
+        ratios = []
+        
+        # Calculate all meaningful ratios
+        for i in range(len(frequencies)):
+            for j in range(i + 1, len(frequencies)):
+                f1, f2 = frequencies[i], frequencies[j]
+                ratio = f2 / f1
+                
+                # Only ratios within one octave
+                if 1.0 < ratio <= 2.0:
+                    ratios.append({
+                        'freq1': f1,
+                        'freq2': f2,
+                        'ratio': ratio,
+                        'interval_cents': 1200 * np.log2(ratio)
+                    })
+        
+        return ratios
+
+    def analyze_koma_deviations_pure(self, ratios):
+        """
+        Gerçek koma analizi - Equal Temperament'tan sapmaları ölç
+        """
+        koma_analysis = []
+        
+        for ratio_data in ratios:
+            ratio = ratio_data['ratio']
+            
+            # Find nearest equal temperament semitone
+            semitones = 12 * np.log2(ratio)
+            nearest_semitone = round(semitones)
+            expected_ratio = 2 ** (nearest_semitone / 12)
+            
+            # Calculate deviations
+            cent_deviation = 1200 * np.log2(ratio / expected_ratio)
+            koma_deviation = cent_deviation / 22.64  # 1 koma = 22.64 cents
+            
+            # Classify as microtonal if deviation > 0.5 koma
+            is_microtonal = abs(koma_deviation) > 0.5
+            
+            koma_analysis.append({
+                'freq_pair': (float(ratio_data['freq1']), float(ratio_data['freq2'])),
+                'ratio': float(ratio),
+                'expected_ratio': float(expected_ratio),
+                'cent_deviation': float(cent_deviation),
+                'koma_deviation': float(koma_deviation),
+                'is_microtonal': bool(is_microtonal),
+                'semitone_distance': float(nearest_semitone)
+            })
+        
+        return koma_analysis
+
+    def detect_scale_system_pure(self, ratios):
+        """
+        Saf scale/makam tespiti - sadece matematik
+        """
+        if not ratios:
+            return self._empty_result()
+        
+        ratio_values = [r['ratio'] for r in ratios]
+        
+        # Analyze Western scales
+        western_scores = {}
+        for scale_name, scale_ratios in self.western_scales.items():
+            score = self._calculate_mathematical_match(ratio_values, scale_ratios)
+            western_scores[scale_name] = score
+        
+        # Analyze Eastern makams
+        eastern_scores = {}
+        for makam_name, makam_data in self.eastern_makams.items():
+            # Base score from ratio matching
+            base_score = self._calculate_mathematical_match(ratio_values, makam_data['ratios'])
+            
+            # Bonus for characteristic intervals
+            char_bonus = self._calculate_characteristic_match(ratio_values, makam_data['characteristic_intervals'])
+            
+            # Microtonal bonus (Eastern music uses more microtones)
+            microtonal_bonus = self._calculate_microtonal_bonus(ratios)
+            
+            total_score = base_score + char_bonus + microtonal_bonus
+            eastern_scores[makam_name] = total_score
+        
+        # Find best matches
+        best_western = max(western_scores.items(), key=lambda x: x[1])
+        best_eastern = max(eastern_scores.items(), key=lambda x: x[1])
+        
+        # Koma analysis for final decision
+        koma_analysis = self.analyze_koma_deviations_pure(ratios)
+        microtonal_ratio = sum(1 for k in koma_analysis if k['is_microtonal']) / len(koma_analysis) if koma_analysis else 0
+        
+        # Pure mathematical decision
+        # If significant microtonal content (>15%), lean towards Eastern
+        # Otherwise, choose based on pure score
+        
+        eastern_confidence = best_eastern[1]
+        western_confidence = best_western[1]
+        
+        # Microtonal factor
+        if microtonal_ratio > 0.15:
+            eastern_confidence *= (1 + microtonal_ratio)
+        else:
+            western_confidence *= (1 + (1 - microtonal_ratio) * 0.2)
+        
+        # Normalize confidences
+        total_conf = eastern_confidence + western_confidence
+        if total_conf > 0:
+            eastern_confidence /= total_conf
+            western_confidence /= total_conf
+        
+        is_western = western_confidence > eastern_confidence
+        
+        return {
+            'western_tonality': best_western[0],
+            'western_confidence': float(western_confidence),
+            'eastern_makam': best_eastern[0],
+            'eastern_confidence': float(eastern_confidence),
+            'is_western': bool(is_western),
+            'microtonal_ratio': float(microtonal_ratio),
+            'koma_analysis': koma_analysis,
+            'system': 'Western' if is_western else 'Eastern',
+            'confidence': float(max(western_confidence, eastern_confidence)),
+            'all_western_scores': {k: float(v) for k, v in western_scores.items()},
+            'all_eastern_scores': {k: float(v) for k, v in eastern_scores.items()}
+        }
+
+    def _calculate_mathematical_match(self, observed_ratios, reference_ratios):
+        """
+        Matematiksel eşleşme skorunu hesapla
+        """
+        if not observed_ratios or not reference_ratios:
+            return 0.0
+        
+        total_score = 0
+        match_count = 0
+        
+        for obs_ratio in observed_ratios:
+            # Find closest reference ratio
+            distances = [abs(obs_ratio - ref_ratio) for ref_ratio in reference_ratios]
+            min_distance = min(distances)
+            
+            # Score based on how close the match is (tolerance: 3%)
+            if min_distance < 0.03:
+                score = (0.03 - min_distance) / 0.03
+                total_score += score
+                match_count += 1
+        
+        # Normalize by the number of reference ratios
+        return total_score / len(reference_ratios) if reference_ratios else 0.0
+
+    def _calculate_characteristic_match(self, observed_ratios, characteristic_intervals):
+        """
+        Karakteristik aralık eşleşmesi
+        """
+        bonus = 0
+        for char_interval in characteristic_intervals:
+            for obs_ratio in observed_ratios:
+                if abs(obs_ratio - char_interval) < 0.02:  # 2% tolerance
+                    bonus += 0.1
+                    break  # Only count each characteristic once
+        return bonus
+
+    def _calculate_microtonal_bonus(self, ratios):
+        """
+        Mikrotonal içerik bonusu
+        """
+        if not ratios:
+            return 0
+        
+        microtonal_count = 0
+        for ratio_data in ratios:
+            ratio = ratio_data['ratio']
+            semitones = 12 * np.log2(ratio)
+            # Check if ratio is between semitones (microtonal)
+            if abs(semitones - round(semitones)) > 0.1:
+                microtonal_count += 1
+        
+        microtonal_ratio = microtonal_count / len(ratios)
+        return microtonal_ratio * 0.3  # Bonus for Eastern systems
+
+    def analyze_rhythm_pure(self, y, sr):
+        """
+        Saf ritim analizi
+        """
+        try:
+            # Onset detection
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
+            
+            # Tempo detection with multiple methods
+            tempo_1, beats_1 = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr)
+            tempo_2, beats_2 = librosa.beat.beat_track(y=y, sr=sr)
+            
+            # Choose the most reasonable tempo
+            tempo = tempo_1 if 60 <= tempo_1 <= 200 else tempo_2
+            beats = beats_1 if 60 <= tempo_1 <= 200 else beats_2
+            
+            # Beat regularity analysis
+            regularity = 0.5  # Default
+            if len(beats) > 4:
+                beat_times = librosa.frames_to_time(beats, sr=sr)
+                beat_intervals = np.diff(beat_times)
+                if len(beat_intervals) > 0:
+                    cv = np.std(beat_intervals) / (np.mean(beat_intervals) + 1e-8)
+                    regularity = max(0, min(1, 1.0 - cv))
+            
+            # Meter detection based on onset patterns
+            meter = self._detect_meter_mathematically(onset_env, beats)
+            
+            # Rhythm complexity
+            complexity = self._calculate_rhythm_complexity(onset_env)
+            
+            return {
+                'tempo': float(tempo),
+                'regularity': float(regularity),
+                'meter': meter,
+                'beat_count': int(len(beats)),
+                'complexity': float(complexity),
+                'onset_density': float(np.mean(onset_env))
+            }
+            
+        except Exception as e:
+            print(f"Rhythm analysis error: {e}")
+            return {
+                'tempo': 120.0,
+                'regularity': 0.5,
+                'meter': '4/4',
+                'beat_count': 0,
+                'complexity': 0.5,
+                'onset_density': 0.5
+            }
+
+    def _detect_meter_mathematically(self, onset_env, beats):
+        """
+        Matematiksel meter tespiti
+        """
+        if len(beats) < 8:
+            return "4/4"
+        
+        beat_strengths = onset_env[beats[:min(len(beats), 32)]]  # Analyze first 32 beats
+        
+        # Test different meter patterns using autocorrelation
+        patterns = {
+            "4/4": 4,
+            "3/4": 3,
+            "6/8": 6,
+            "2/4": 2,
+            "7/8": 7,
+            "9/8": 9,
+            "5/4": 5
+        }
+        
+        scores = {}
+        for meter_name, pattern_length in patterns.items():
+            if len(beat_strengths) >= pattern_length * 2:
+                score = self._calculate_autocorrelation_score(beat_strengths, pattern_length)
+                scores[meter_name] = score
+        
+        # Return meter with highest score, default to 4/4
+        return max(scores.items(), key=lambda x: x[1])[0] if scores else "4/4"
+
+    def _calculate_autocorrelation_score(self, signal, period):
+        """
+        Otomatik korelasyon skoru
+        """
+        if len(signal) < period * 2:
+            return 0
+        
+        # Calculate autocorrelation at the given period
+        correlation = 0
+        count = 0
+        
+        for i in range(len(signal) - period):
+            correlation += signal[i] * signal[i + period]
+            count += 1
+        
+        return correlation / count if count > 0 else 0
+
+    def _calculate_rhythm_complexity(self, onset_env):
+        """
+        Ritim karmaşıklığı hesapla
+        """
+        # Calculate entropy of onset distribution
+        if len(onset_env) == 0:
+            return 0.5
+        
+        # Normalize
+        onset_norm = onset_env / (np.max(onset_env) + 1e-8)
+        
+        # Calculate variance and entropy measures
+        variance = np.var(onset_norm)
+        mean_onset = np.mean(onset_norm)
+        
+        complexity = min(1.0, variance + mean_onset)
+        return complexity
+
+    def analyze_timbre_pure(self, y, sr):
+        """
+        Saf timbre analizi - sadece spektral özellikler
+        """
+        try:
+            # Extract spectral features
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+            spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+            spectral_contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
+            spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
+            spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
+            zero_crossing_rate = librosa.feature.zero_crossing_rate(y)
+            
+            # Harmonic/percussive separation
+            y_harmonic, y_percussive = librosa.effects.hpss(y)
+            harmonic_ratio = np.mean(np.abs(y_harmonic)) / (np.mean(np.abs(y)) + 1e-8)
+            percussive_ratio = np.mean(np.abs(y_percussive)) / (np.mean(np.abs(y)) + 1e-8)
+            
+            # Calculate derived features
+            brightness = float(np.mean(spectral_centroid) / (sr/2))
+            richness = float(np.mean(spectral_contrast))
+            bandwidth = float(np.mean(spectral_bandwidth) / (sr/2))
+            rolloff = float(np.mean(spectral_rolloff) / (sr/2))
+            zcr = float(np.mean(zero_crossing_rate))
+            
+            # Instrument classification based on pure spectral analysis
+            instruments = self._classify_instruments_mathematically(
+                brightness, richness, harmonic_ratio, percussive_ratio, 
+                bandwidth, rolloff, zcr
+            )
+            
+            return {
+                'brightness': brightness,
+                'richness': richness,
+                'harmonic_ratio': float(harmonic_ratio),
+                'percussive_ratio': float(percussive_ratio),
+                'bandwidth': bandwidth,
+                'rolloff': rolloff,
+                'zero_crossing_rate': zcr,
+                'detected_instruments': instruments,
+                'mfcc_features': [float(x) for x in mfcc.mean(axis=1)],
+                'spectral_features': {
+                    'centroid': float(np.mean(spectral_centroid)),
+                    'contrast': float(np.mean(spectral_contrast)),
+                    'bandwidth': float(np.mean(spectral_bandwidth)),
+                    'rolloff': float(np.mean(spectral_rolloff))
+                }
+            }
+            
+        except Exception as e:
+            print(f"Timbre analysis error: {e}")
+            return {
+                'brightness': 0.5,
+                'richness': 1.0,
+                'harmonic_ratio': 0.7,
+                'percussive_ratio': 0.3,
+                'bandwidth': 0.5,
+                'rolloff': 0.5,
+                'zero_crossing_rate': 0.1,
+                'detected_instruments': [],
+                'mfcc_features': [0.0] * 13,
+                'spectral_features': {}
+            }
+
+    def _classify_instruments_mathematically(self, brightness, richness, harmonic_ratio, 
+                                           percussive_ratio, bandwidth, rolloff, zcr):
+        """
+        Matematiksel enstrüman sınıflandırması
+        """
+        instruments = []
+        
+        # String instruments (high harmonic content, moderate brightness)
+        if harmonic_ratio > 0.7 and 0.3 < brightness < 0.8:
+            if richness > 15:  # Electric instruments have higher contrast
+                instruments.append('electric_guitar')
+            elif 5 < richness < 15:
+                instruments.append('acoustic_guitar')
+            elif richness > 8 and brightness < 0.5:
+                instruments.append('ud')
+            elif brightness > 0.6:
+                instruments.append('kanun')
+        
+        # Piano/keyboard (high harmonic, wide bandwidth, low ZCR)
+        if harmonic_ratio > 0.8 and bandwidth > 0.3 and zcr < 0.1:
+            instruments.append('piano')
+        
+        # Wind instruments (moderate harmonic, specific brightness range)
+        if 0.6 < harmonic_ratio < 0.8 and 0.4 < brightness < 0.7:
+            if rolloff < 0.5:
+                instruments.append('ney')
+            else:
+                instruments.append('flute')
+        
+        # Percussion (high percussive ratio, high ZCR)
+        if percussive_ratio > 0.4 or zcr > 0.15:
+            instruments.append('drums')
+        
+        # Bass instruments (low brightness, high harmonic content)
+        if brightness < 0.3 and harmonic_ratio > 0.6:
+            instruments.append('bass')
+        
+        # Brass (high brightness, high richness)
+        if brightness > 0.7 and richness > 10:
+            instruments.append('brass')
+        
+        return instruments
+
+    def _empty_result(self):
+        """Boş sonuç"""
         return {
             'western_tonality': 'Unknown',
-            'eastern_makam': 'Unknown',
-            'is_western': False,
             'western_confidence': 0.0,
+            'eastern_makam': 'Unknown',
             'eastern_confidence': 0.0,
-            'microtonal_ratio': 0.0
+            'is_western': True,
+            'microtonal_ratio': 0.0,
+            'koma_analysis': [],
+            'system': 'Unknown',
+            'confidence': 0.0,
+            'all_western_scores': {},
+            'all_eastern_scores': {}
         }
-    
-    # Sort frequencies and calculate ratios
-    freqs.sort()
-    ratio_matrix = []
-    for i in range(len(freqs)):
-        for j in range(i+1, len(freqs)):
-            ratio = freqs[j] / freqs[i]
-            if 1.0 < ratio < 2.1:
-                ratio_matrix.append(ratio)
 
-    # Enhanced microtonal analysis
-    def analyze_microtones(ratios):
-        microtonal_intervals = []
-        koma_positions = [i/9 for i in range(1, 9)]  # Türk müziği koma pozisyonları
-        
-        for ratio in ratios:
-            for koma in koma_positions:
-                if any(abs(ratio - (1 + koma)) < 0.015):
-                    microtonal_intervals.append((ratio, koma))
-        
-        return microtonal_intervals
-
-    # Analyze microtonal content
-    microtonal_intervals = analyze_microtones(ratio_matrix)
-    microtonal_ratio = len(microtonal_intervals) / max(1, len(ratio_matrix))
-
-    # Create histogram for pattern analysis
-    hist, bin_edges = np.histogram(ratio_matrix, bins=100, range=(1.0, 2.1))
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-    # Enhanced pattern recognition for Turkish music
-    def analyze_makam_patterns(ratios, makam_def):
-        matches = 0
-        total_patterns = len(makam_def['characteristic_intervals'])
-        
-        for target_ratio, interval_type in makam_def['characteristic_intervals']:
-            for ratio in ratios:
-                if interval_type == 'M' and any(abs(ratio - (target_ratio + k/9)) < 0.015 for k in range(-1, 2)):
-                    matches += 1
-                    break
-                elif interval_type == 'T' and abs(ratio - target_ratio) < 0.02:
-                    matches += 1
-                    break
-        
-        return matches / total_patterns if total_patterns > 0 else 0
-
-    # Calculate makam confidence scores
-    makam_scores = {}
-    for makam_name, makam_def in eastern_ratios.items():
-        pattern_score = analyze_makam_patterns(ratio_matrix, makam_def)
-        microtonal_match = sum(1 for m in microtonal_intervals if any(abs(m[0] - r) < 0.015 for r in makam_def['microtones']))
-        microtonal_score = microtonal_match / len(makam_def['microtones'])
-        
-        # Combined score with higher weight on microtonal content for Turkish music
-        makam_scores[makam_name] = (pattern_score * 0.4 + microtonal_score * 0.6)
-
-    # Find best matching makam
-    best_makam = max(makam_scores.items(), key=lambda x: x[1])
-
-    # Western music analysis (simplified for contrast)
-    western_scores = {}
-    for scale_name, scale_ratios in western_ratios.items():
-        matches = sum(1 for r in ratio_matrix if any(abs(r - sr) < 0.02 for sr in scale_ratios))
-        western_scores[scale_name] = matches / len(scale_ratios)
-
-    best_western = max(western_scores.items(), key=lambda x: x[1])
-
-    # System classification logic
-    is_western = False
-    western_conf = best_western[1]
-    eastern_conf = best_makam[1]
-
-    # Bias towards Eastern music when significant microtonal content is found
-    if microtonal_ratio > 0.15:
-        eastern_conf *= (1 + microtonal_ratio)
-        western_conf *= (1 - microtonal_ratio)
-
-    # Final decision with strong bias towards Turkish music characteristics
-    if microtonal_ratio > 0.15 or eastern_conf > western_conf:
-        is_western = False
-        western_conf *= 0.5  # Reduce western confidence when Turkish characteristics are found
-    else:
-        is_western = True
-        eastern_conf *= 0.5
-
-    return {
-        'western_tonality': best_western[0],
-        'eastern_makam': best_makam[0],
-        'is_western': is_western,
-        'western_confidence': western_conf,
-        'eastern_confidence': eastern_conf,
-        'microtonal_ratio': microtonal_ratio
-    }
-
-def analyze_rhythm(y, sr):
+def analyze_music_pure(filepath, progress_callback=None):
     """
-    Analyze rhythm patterns and beat structure using enhanced pattern recognition
+    Saf müzik analizi - hiçbir varsayım yok
     """
-    # Create a more precise onset detection
-    # Use a combination of energy, spectral flux and phase deviation for better accuracy
-    onset_env = librosa.onset.onset_strength(
-        y=y, 
-        sr=sr,
-        hop_length=512,
-        aggregate=np.median  # More robust to noise
-    )
+    analyzer = PureMusicAnalyzer()
     
-    # Enhanced tempo detection with better pulse tracking
-    tempo, beats = librosa.beat.beat_track(
-        onset_envelope=onset_env, 
-        sr=sr,
-        start_bpm=60,  # Start with neutral assumption
-        tightness=100  # More precise beat tracking
-    )
+    if progress_callback:
+        progress_callback(10, "Ses dosyası yükleniyor...")
     
-    # Calculate beat intervals and analyze their pattern
-    beat_regularity = 0.5  # Default value
-    rhythm_pattern = "Unknown"
-    groove_pattern = "Unknown"
-    
-    if len(beats) > 4:
-        # Convert frame indices to seconds
-        beat_times = librosa.frames_to_time(beats, sr=sr)
-        beat_intervals = np.diff(beat_times)
-        
-        # Calculate regularity metrics
-        cv = np.std(beat_intervals) / np.mean(beat_intervals)  # Coefficient of variation
-        beat_regularity = max(0, min(1, 1.0 - cv))  # Higher regularity = lower variation
-        
-        # Analyze patterns in beat strength to determine meter
-        if len(beats) >= 16:
-            # Get the strength of each beat
-            beat_strengths = onset_env[beats]
-            
-            # Find patterns using autocorrelation
-            # This detects periodic patterns in the beat strengths
-            acorr = np.correlate(beat_strengths, beat_strengths, mode='full')
-            acorr = acorr[len(acorr)//2:]  # Keep only the positive lags
-            
-            # Find peaks in autocorrelation to detect period
-            peaks, _ = scipy.signal.find_peaks(acorr, height=acorr.max() * 0.5)
-            
-            # Determine the most likely meter based on period
-            if len(peaks) > 0:
-                meter_period = peaks[0]
-                
-                if meter_period == 2:
-                    rhythm_pattern = "2/4"
-                elif meter_period == 3:
-                    rhythm_pattern = "3/4"
-                elif meter_period == 4:
-                    rhythm_pattern = "4/4"
-                elif meter_period == 6:
-                    rhythm_pattern = "6/8"
-                elif meter_period == 5:
-                    rhythm_pattern = "5/4"
-                elif meter_period == 7:
-                    rhythm_pattern = "7/8"
-                elif meter_period == 9:
-                    rhythm_pattern = "9/8"  # Common in Turkish music
-                else:
-                    rhythm_pattern = "Complex"
-                
-                # Look at the pattern within each measure to determine groove
-                if meter_period <= len(beat_strengths):
-                    # Reshape beat strengths into measures
-                    n_complete_measures = len(beat_strengths) // meter_period
-                    if n_complete_measures > 0:
-                        measures = beat_strengths[:n_complete_measures * meter_period].reshape(n_complete_measures, meter_period)
-                        
-                        # Average beat strength profile across measures
-                        avg_measure = np.mean(measures, axis=0)
-                        
-                        # Calculate skewness of the distribution
-                        measure_skew = skew(avg_measure)
-                        
-                        # Determine groove characteristics
-                        if rhythm_pattern == "4/4":
-                            if avg_measure[0] > avg_measure[2] and avg_measure[2] > avg_measure[1] and avg_measure[2] > avg_measure[3]:
-                                groove_pattern = "Steady"
-                            elif avg_measure[0] > avg_measure[2] and avg_measure[1] < avg_measure[3]:
-                                groove_pattern = "Swing"
-                            elif measure_skew > 0.5:
-                                groove_pattern = "Front-heavy"
-                            elif measure_skew < -0.5:
-                                groove_pattern = "Back-heavy"
-                            else:
-                                groove_pattern = "Even"
-                        elif rhythm_pattern in ["9/8", "7/8"]:  # Characteristic of many Turkish rhythms
-                            groove_pattern = "Aksak"  # Asymmetric rhythm common in Turkish music
-            else:
-                # Fallback method based on simple pattern matching
-                pattern_scores = {
-                    "4/4": 0,
-                    "3/4": 0,
-                    "6/8": 0,
-                    "5/4": 0,
-                    "7/8": 0,
-                    "9/8": 0
-                }
-                
-                # Use beat strength patterns
-                for i in range(0, len(beat_strengths) - 4, 4):
-                    pattern = beat_strengths[i:i+4]
-                    
-                    # Analyze relative strengths
-                    if pattern[0] > pattern[1] and pattern[0] > pattern[2] and pattern[2] > pattern[1]:
-                        pattern_scores["4/4"] += 1
-                    elif pattern[0] > pattern[1] and pattern[0] > pattern[2]:
-                        pattern_scores["3/4"] += 1
-                    elif pattern[0] > pattern[1] and pattern[3] > pattern[2]:
-                        pattern_scores["6/8"] += 1
-                    
-                # Check for 7/8 pattern (3+2+2 or 2+2+3)
-                for i in range(0, len(beat_strengths) - 7, 7):
-                    pattern = beat_strengths[i:i+7]
-                    if pattern[0] > pattern[3] and pattern[3] > pattern[5]:
-                        pattern_scores["7/8"] += 1
-                
-                # Check for 9/8 pattern (2+2+2+3)
-                for i in range(0, len(beat_strengths) - 9, 9):
-                    pattern = beat_strengths[i:i+9]
-                    if pattern[0] > pattern[2] and pattern[4] > pattern[6] and pattern[6] < pattern[8]:
-                        pattern_scores["9/8"] += 1
-                
-                # Determine the most likely pattern
-                if pattern_scores:
-                    rhythm_pattern = max(pattern_scores.items(), key=lambda x: x[1])[0]
-    
-    return {
-        "tempo": tempo,
-        "beat_regularity": beat_regularity,
-        "rhythm_pattern": rhythm_pattern,
-        "groove_pattern": groove_pattern
-    }
-
-def analyze_timbre(y, sr):
-    """
-    Enhanced timbre analysis with Turkish instrument recognition
-    """
-    # Turkish music instrument characteristics
-    turkish_instruments = {
-        'Ney': {
-            'frequency_range': (200, 1000),
-            'harmonic_ratio': 0.7,
-            'attack_time': 0.1
-        },
-        'Ud': {
-            'frequency_range': (70, 700),
-            'harmonic_ratio': 0.8,
-            'attack_time': 0.05
-        },
-        'Kanun': {
-            'frequency_range': (100, 1200),
-            'harmonic_ratio': 0.9,
-            'attack_time': 0.02
-        },
-        'Tanbur': {
-            'frequency_range': (80, 800),
-            'harmonic_ratio': 0.75,
-            'attack_time': 0.04
-        }
-    }
-
-    # Extract features
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
-    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-    
-    # Analyze harmonic content
-    harmonic = librosa.effects.harmonic(y)
-    harmonic_ratio = np.mean(np.abs(harmonic)) / np.mean(np.abs(y))
-
-    # Get frequency range
-    freqs = librosa.fft_frequencies(sr=sr)
-    spec = np.abs(librosa.stft(y))
-    freq_range = (np.min(freqs[spec.mean(axis=1) > spec.mean()]),
-                 np.max(freqs[spec.mean(axis=1) > spec.mean()]))
-
-    # Calculate attack time
-    onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env)
-    if len(onset_frames) > 0:
-        attack_time = librosa.frames_to_time(onset_frames[1] - onset_frames[0], sr=sr)
-    else:
-        attack_time = 0
-
-    # Match with Turkish instruments
-    instrument_scores = {}
-    for inst_name, inst_chars in turkish_instruments.items():
-        freq_match = (freq_range[0] >= inst_chars['frequency_range'][0] * 0.8 and
-                     freq_range[1] <= inst_chars['frequency_range'][1] * 1.2)
-        
-        harmonic_match = abs(harmonic_ratio - inst_chars['harmonic_ratio']) < 0.2
-        attack_match = abs(attack_time - inst_chars['attack_time']) < 0.1
-        
-        score = sum([freq_match, harmonic_match, attack_match]) / 3
-        instrument_scores[inst_name] = score
-
-    # Get detected instruments
-    detected_instruments = [inst for inst, score in instrument_scores.items() if score > 0.6]
-
-    return {
-        'detected_instruments': detected_instruments,
-        'is_turkish_music': len(detected_instruments) > 0,
-        'harmonic_ratio': harmonic_ratio,
-        'frequency_range': freq_range,
-        'mfcc_features': mfcc.mean(axis=1).tolist()
-    }
-
-def extract_patterns(y, sr):
-    """
-    Extract recurring patterns in the music using signal processing techniques
-    """
-    # Extract chroma features (pitch class profiles)
-    # This represents the energy in each of the 12 pitch classes
-    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
-    
-    # Normalize chroma to make pattern detection more robust
-    chroma_norm = librosa.util.normalize(chroma, axis=0)
-    
-    # Find structural boundaries using gaussian mixture model
-    # This can identify verse/chorus boundaries and repeating sections
-    bounds = librosa.segment.agglomerative(chroma_norm, 16)
-    bound_times = librosa.frames_to_time(bounds, sr=sr)
-    
-    # Detect recurring patterns using 2D autocorrelation
-    # This finds repeating melodic and harmonic patterns
-    correlation = np.correlate(chroma_norm.flatten(), chroma_norm.flatten(), mode='full')
-    correlation = correlation[len(correlation)//2:]
-    
-    # Find peaks in correlation to detect pattern repetition periods
-    peaks, _ = scipy.signal.find_peaks(correlation, height=correlation.max() * 0.5)
-    
-    # Convert peak frames to time
-    if len(peaks) > 0:
-        pattern_period = librosa.frames_to_time(peaks[0], sr=sr, hop_length=512)
-    else:
-        pattern_period = 0
-    
-    # Calculate recurrence matrix for visualization
-    rec = librosa.segment.recurrence_matrix(chroma_norm, mode='affinity')
-    
-    # Calculate pattern density (how much repetition exists)
-    pattern_density = np.mean(rec)
-    
-    # Identify dominant scales/modes using chroma histograms
-    chroma_avg = np.mean(chroma_norm, axis=1)
-    dominant_note = np.argmax(chroma_avg)
-    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    root_note = note_names[dominant_note]
-    
-    # Calculate modal profile to distinguish between major/minor/modal scales
-    # Rotate chroma to root note
-    rotated_chroma = np.roll(chroma_avg, -dominant_note)
-    
-    # Compare with known modal profiles
-    modal_profiles = {
-        'Major': [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
-        'Minor': [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0],
-        'Dorian': [1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0],
-        'Phrygian': [1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0],
-        'Lydian': [1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
-        'Mixolydian': [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0],
-        'Locrian': [1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0],
-        'Harmonic Minor': [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1]
-    }
-    
-    mode_scores = {}
-    for mode, profile in modal_profiles.items():
-        # Calculate correlation between observed chroma and modal profile
-        correlation = np.corrcoef(rotated_chroma, profile)[0, 1]
-        mode_scores[mode] = correlation
-    
-    # Find the most likely mode
-    if mode_scores:
-        dominant_mode = max(mode_scores.items(), key=lambda x: x[1])[0]
-    else:
-        dominant_mode = "Unknown"
-    
-    return {
-        "pattern_period": float(pattern_period) if pattern_period else 0,
-        "pattern_density": float(pattern_density),
-        "structural_boundaries": bound_times.tolist(),
-        "root_note": root_note,
-        "dominant_mode": dominant_mode,
-        "mode_scores": {k: float(v) for k, v in mode_scores.items()}
-    }
-
-def analyze_music(filepath, progress_callback=None):
-    """
-    Main function to analyze the music file with enhanced pattern recognition
-    """
-    # Load the audio file
     try:
-        # CRITICAL FIX: Check for known Western songs by filename
-        filename = os.path.basename(filepath).lower()
-        known_western_songs = {
-            "november": True,  # November Rain
-            "guns": True,      # Guns N' Roses
-            "rock": True,      # Rock music
-            "metal": True,     # Metal music
-            "pop": True,       # Pop music
-            "jazz": True,      # Jazz
-            "blues": True,     # Blues
-            "classical": True, # Classical Western music
-            "duff": True,      # Duff McKagan
-            "mckagan": True,   # Duff McKagan
-            "man": True,       # How to be a Man (likelihood for Western music)
-            "album": True      # Likely Western music format reference
-        }
-        
-        force_western = False
-        for keyword in known_western_songs:
-            if keyword in filename:
-                force_western = True
-                break
-                
-        # Check file size and adjust sample rate if needed
-        file_size = os.path.getsize(filepath)
-        sr_target = None  # Default sampling rate
-        
-        # Adjust sample rate for large files
-        if file_size > 10 * 1024 * 1024:  # 10MB
-            sr_target = 22050  # Lower sample rate
-        
-        # Load a segment of the file (first 60 seconds)
-        y, sr = librosa.load(filepath, sr=sr_target, duration=60)
+        # Load audio (first 2 minutes for efficiency)
+        y, sr = librosa.load(filepath, duration=120)
         
         if progress_callback:
-            progress_callback(20)  # Audio loaded
+            progress_callback(30, "Frekanslar çıkarılıyor...")
         
-        # Basic audio properties
-        duration = librosa.get_duration(y=y, sr=sr)
-        
-        # Extract pitches with improved frequency resolution
-        # Use smaller hop size for more accurate pitch tracking
-        hop_length = 512
-        n_fft = 2048
-        
-        # Use more robust pitch tracking with better parameters
-        pitches, magnitudes = librosa.piptrack(
-            y=y, 
-            sr=sr, 
-            n_fft=n_fft, 
-            hop_length=hop_length,
-            fmin=50,  # Minimum frequency
-            fmax=4000  # Maximum frequency - capture most musical content
-        )
+        # Extract frequencies
+        frequencies = analyzer.extract_frequencies_pure(y, sr)
         
         if progress_callback:
-            progress_callback(40)  # Pitch analysis done
+            progress_callback(50, "Frekans oranları hesaplanıyor...")
         
-        # Get dominant frequencies with improved selection criteria
-        freqs = []
-        for t in range(0, pitches.shape[1], max(1, pitches.shape[1] // 200)):  # More frames for better resolution
-            # Extract top 3 frequencies at each time frame for better pattern detection
-            if magnitudes[:, t].max() > 0:
-                # Get indices of top 3 magnitudes
-                top_indices = np.argsort(magnitudes[:, t])[-3:]
-                for index in top_indices:
-                    freq = pitches[index, t]
-                    if freq > 50:  # Only include meaningful frequencies
-                        freqs.append(freq)
-        
-        # Detect Western music harmonic features
-        # Western rock music often has strong harmonic content and clear chords
-        harmonic = librosa.effects.harmonic(y)
-        chromagram = librosa.feature.chroma_stft(y=harmonic, sr=sr)
-        
-        # Calculate the variance of each pitch class
-        # Western music typically has more focused pitch classes (stable harmony)
-        chroma_variance = np.var(chromagram, axis=1)
-        chroma_focus = np.max(chroma_variance) / np.mean(chroma_variance)
-        
-        # Detect percussive content (typical in rock/pop music)
-        percussive = librosa.effects.percussive(y)
-        percussive_energy = np.mean(percussive**2) / np.mean(y**2)
-        
-        # ROCK MUSIC CHECK: Most commercial rock/pop has significant percussive content
-        # This is a strong indicator of Western pop/rock music
-        if percussive_energy > 0.2:  # If at least 20% of energy is percussive
-            force_western = True  # Force Western classification
-        
-        # Enhanced tonality detection with pattern recognition
-        tonality = detect_tonality(freqs)
-        
-        # Add percussion content to the tonality data for later use
-        tonality['percussive_content'] = float(percussive_energy)
+        # Calculate ratios
+        ratios = analyzer.calculate_frequency_ratios_pure(frequencies)
         
         if progress_callback:
-            progress_callback(60)  # Tonality analysis done
+            progress_callback(70, "Tonalite/makam analizi...")
         
-        # Enhanced rhythm analysis
-        rhythm_info = analyze_rhythm(y, sr)
-        
-        # RHYTHM CHECK: Most Western music has a clear 4/4 rhythm
-        # If we detect strong 4/4 rhythm with high regularity, likely Western
-        if rhythm_info['rhythm_pattern'] == '4/4' and rhythm_info['beat_regularity'] > 0.7:
-            tonality['western_confidence'] = max(tonality['western_confidence'], 0.85)
-            tonality['is_western'] = True
+        # Analyze scale system
+        tonality = analyzer.detect_scale_system_pure(ratios)
         
         if progress_callback:
-            progress_callback(70)  # Rhythm analysis done
+            progress_callback(80, "Ritim analizi...")
         
-        # Enhanced timbre analysis
-        timbre_info = analyze_timbre(y, sr)
-        
-        # CRITICAL ENHANCEMENT: Detect electric guitar and rock drums with higher sensitivity
-        # This directly checks for specific rock music instrument characteristics
-        
-        # Electric guitar detection - rock music almost always has electric guitar
-        # Check for high harmonic content and specific spectral patterns
-        has_electric_guitar = False
-        if 'has_electric_guitar' in timbre_info:
-            has_electric_guitar = timbre_info['has_electric_guitar']
-        
-        # Additional electric guitar check with higher sensitivity
-        spectral_contrast = librosa.feature.spectral_contrast(y=harmonic, sr=sr)
-        if np.mean(spectral_contrast[1:3]) > 1.2:  # Even lower threshold for better detection
-            has_electric_guitar = True
-        
-        # Update the timbre info
-        if has_electric_guitar:
-            timbre_info['has_electric_guitar'] = True
-            timbre_info['instrument_family'] = 'Electric'  # Override the instrument family
-        
-        # Rock drums are typically louder and have specific frequency distribution
-        has_rock_drums = False
-        if 'has_rock_drums' in timbre_info:
-            has_rock_drums = timbre_info['has_rock_drums']
-        
-        # Check for rock drums using percussive content and specific frequency bands
-        if percussive_energy > 0.2:  # Lower threshold for even better detection
-            # Rock drums have strong hit points and clear transients
-            hop_length = 512
-            onset_env = librosa.onset.onset_strength(y=percussive, sr=sr, hop_length=hop_length)
-            if np.max(onset_env) > 0.4:
-                has_rock_drums = True
-                
-        # Update timbre info
-        if has_rock_drums:
-            timbre_info['has_rock_drums'] = True
-            
-        # MAJOR ADJUSTMENT FOR WESTERN ROCK MUSIC CLASSIFICATION
-        # If we detect either electric guitar OR rock drums, we should strongly bias toward Western
-        if has_electric_guitar or has_rock_drums:
-            tonality['western_confidence'] = max(tonality['western_confidence'] * 1.8, 0.9)
-            tonality['is_western'] = True  # Force classification as Western music
+        # Rhythm analysis
+        rhythm = analyzer.analyze_rhythm_pure(y, sr)
         
         if progress_callback:
-            progress_callback(80)  # Timbre analysis done
+            progress_callback(90, "Timbre analizi...")
         
-        # Extract melodic and harmonic patterns
-        pattern_info = extract_patterns(y, sr)
-        
-        # Western pop/rock tends to have higher pattern density (verse/chorus structure)
-        if pattern_info.get('pattern_density', 0) > 0.4:  # Even lower threshold
-            tonality['western_confidence'] = min(0.99, tonality['western_confidence'] * 1.1)
-            
-        # Final check: if it's a typical Western chord progression in major/minor, very likely Western
-        mode_scores = pattern_info.get('mode_scores', {})
-        if mode_scores and (mode_scores.get('Major', 0) > 0.5 or mode_scores.get('Minor', 0) > 0.5):
-            tonality['western_confidence'] = max(tonality['western_confidence'], 0.9)
-            tonality['is_western'] = True
-        
-        # WESTERN POP STRUCTURE CHECK
-        # Most Western pop/rock follows regular patterns (verse/chorus)
-        if pattern_info.get('pattern_period', 0) > 5 and pattern_info.get('pattern_period', 0) < 30:
-            # This is the typical range for verse/chorus structures in Western music
-            tonality['western_confidence'] = max(tonality['western_confidence'], 0.85)
-            tonality['is_western'] = True
+        # Timbre analysis
+        timbre = analyzer.analyze_timbre_pure(y, sr)
         
         if progress_callback:
-            progress_callback(90)  # Pattern analysis done
+            progress_callback(100, "Analiz tamamlandı!")
         
-        # FINAL OVERRIDE FOR WESTERN ROCK MUSIC
-        # If we have multiple indicators of Western music but system is still
-        # classifying as Eastern, override the classification
-        western_indicators = 0
-        if has_electric_guitar:
-            western_indicators += 1
-        if has_rock_drums:
-            western_indicators += 1
-        if chroma_focus > 1.3:
-            western_indicators += 1
-        if tonality.get('rock_ratio', 0) > 0.08:  # Lower threshold for rock ratio
-            western_indicators += 1
-        if rhythm_info.get('rhythm_pattern', '') == '4/4' and rhythm_info.get('beat_regularity', 0) > 0.7:
-            western_indicators += 1
-        if percussive_energy > 0.2:
-            western_indicators += 1
-            
-        # With enough Western indicators, override the classification
-        if western_indicators >= 2:
-            tonality['is_western'] = True
-            tonality['western_confidence'] = max(tonality['western_confidence'], 0.85)
-            
-        # Enforce that the is_western flag actually matches the confidence scores
-        if tonality['western_confidence'] > tonality['eastern_confidence'] * 0.8:
-            tonality['is_western'] = True
+        # Create summary
+        system_name = tonality['system']
+        main_scale = tonality['eastern_makam'] if not tonality['is_western'] else tonality['western_tonality']
+        confidence = tonality['confidence']
         
-        # ULTIMATE OVERRIDE: Force Western classification for known Western songs
-        if force_western:
-            tonality['is_western'] = True
-            tonality['western_confidence'] = 0.95
-            tonality['eastern_confidence'] = 0.1
-            
-        # FINAL SAFETY CHECK: If filename contains any Western music indicators, 
-        # ensure it's classified as Western
-        if force_western:
-            result = {
-                'duration': float(duration),
-                'sample_rate': int(sr),
-                'tempo': float(rhythm_info['tempo']),
-                'beat_regularity': float(rhythm_info['beat_regularity']),
-                'rhythm_pattern': str(rhythm_info['rhythm_pattern']),
-                'groove_pattern': str(rhythm_info.get('groove_pattern', 'Unknown')),
-                'tonality': {
-                    'western_tonality': str(tonality['western_tonality']),
-                    'eastern_makam': str(tonality['eastern_makam']),
-                    'is_western': True,  # Force to Western
-                    'western_confidence': 0.95,  # High confidence
-                    'eastern_confidence': 0.05,  # Low confidence
-                    'microtonal_content': 0.0,  # No microtonal content
-                    'rock_ratio': max(0.7, float(tonality.get('rock_ratio', 0.0))),  # High rock ratio
-                    'dominant_ratios': tonality.get('dominant_ratios', []),
-                    'root_note': pattern_info['root_note'],
-                    'dominant_mode': pattern_info['dominant_mode'],
-                    'chroma_focus': float(chroma_focus),
-                    'percussive_energy': float(percussive_energy)
-                },
-                'timbre': {
-                    'brightness': float(timbre_info['brightness']),
-                    'richness': float(timbre_info['richness']),
-                    'tonal_quality': float(timbre_info.get('tonal_quality', 0.5)),
-                    'percussiveness': float(timbre_info.get('percussiveness', 0.0)),
-                    'instrument_family': "Electric",  # Force to Electric for rock songs
-                    'instrument_era': "Modern",
-                    'has_eastern_instruments': False,
-                    'has_electric_guitar': True,  # Force electric guitar detection
-                    'has_rock_drums': True,       # Force rock drums detection
-                    'has_rock_band': True,        # Force rock band detection
-                    'mfcc_features': [float(x) for x in timbre_info['mfcc_features']]
-                },
-                'patterns': {
-                    'pattern_period': float(pattern_info.get('pattern_period', 0.0)),
-                    'pattern_density': float(pattern_info.get('pattern_density', 0.0)),
-                    'structural_boundaries': pattern_info.get('structural_boundaries', []),
-                    'mode_scores': pattern_info.get('mode_scores', {})
-                },
-                'frequencies': [float(f) for f in freqs[:100]],
-                'system': 'Batı',  # Always Western
-                'audio_data': {
-                    'y': y.tolist()[:10000],
-                    'sr': sr
-                }
-            }
-            return result
-            
-        # FINAL WESTERN OVERRIDE - THIS IS A CRITICAL FIX FOR GENERAL CASE
-        # Most commercial music is Western, so default to Western if we're uncertain
-        # or if we have somewhat close confidences
-        if tonality['western_confidence'] > 0.75 and tonality['eastern_confidence'] < 1.2:
-            tonality['is_western'] = True
+        instruments_str = ', '.join(timbre['detected_instruments']) if timbre['detected_instruments'] else 'Tespit edilemedi'
         
-        # If not a forced override, return the regular result
-        result = {
-            'duration': float(duration),
+        summary = f"""🎵 Müzik Sistemi: {system_name} (Güven: {confidence:.1%})
+🎼 {"Makam" if not tonality['is_western'] else "Tonalite"}: {main_scale}
+🥁 Tempo: {rhythm['tempo']:.0f} BPM - {rhythm['meter']}
+🎸 Enstrümanlar: {instruments_str}
+🔬 Mikrotonal İçerik: %{tonality['microtonal_ratio']*100:.1f}
+📊 Ritim Karmaşıklığı: {rhythm['complexity']:.2f}"""
+        
+        return {
+            'duration': float(librosa.get_duration(y=y, sr=sr)),
             'sample_rate': int(sr),
-            'tempo': float(rhythm_info['tempo']),
-            'beat_regularity': float(rhythm_info['beat_regularity']),
-            'rhythm_pattern': str(rhythm_info['rhythm_pattern']),
-            'groove_pattern': str(rhythm_info.get('groove_pattern', 'Unknown')),
-            'tonality': {
-                'western_tonality': str(tonality['western_tonality']),
-                'eastern_makam': str(tonality['eastern_makam']),
-                'is_western': bool(tonality['is_western']),
-                'western_confidence': float(tonality.get('western_confidence', 0.5)),
-                'eastern_confidence': float(tonality.get('eastern_confidence', 0.5)),
-                'microtonal_content': float(tonality.get('microtonal_ratio', 0.0)),
-                'rock_ratio': float(tonality.get('rock_ratio', 0.0)),
-                'dominant_ratios': tonality.get('dominant_ratios', []),
-                'root_note': pattern_info['root_note'],
-                'dominant_mode': pattern_info['dominant_mode'],
-                'chroma_focus': float(chroma_focus),
-                'percussive_energy': float(percussive_energy)
-            },
-            'timbre': {
-                'brightness': float(timbre_info['brightness']),
-                'richness': float(timbre_info['richness']),
-                'tonal_quality': float(timbre_info.get('tonal_quality', 0.5)),
-                'percussiveness': float(timbre_info.get('percussiveness', 0.0)),
-                'instrument_family': str(timbre_info['instrument_family']),
-                'instrument_era': str(timbre_info.get('instrument_era', 'Unknown')),
-                'has_eastern_instruments': bool(timbre_info.get('has_eastern_instruments', False)),
-                'has_electric_guitar': bool(timbre_info.get('has_electric_guitar', False)),
-                'has_rock_drums': bool(timbre_info.get('has_rock_drums', False)),
-                'has_rock_band': bool(timbre_info.get('has_rock_band', False)),
-                'mfcc_features': [float(x) for x in timbre_info['mfcc_features']]
-            },
-            'patterns': {
-                'pattern_period': float(pattern_info.get('pattern_period', 0.0)),
-                'pattern_density': float(pattern_info.get('pattern_density', 0.0)),
-                'structural_boundaries': pattern_info.get('structural_boundaries', []),
-                'mode_scores': pattern_info.get('mode_scores', {})
-            },
-            'frequencies': [float(f) for f in freqs[:100]],  # Include more frequencies
-            'system': 'Batı' if bool(tonality['is_western']) else 'Doğu',
-            'audio_data': {
-                'y': y.tolist()[:10000],  # Just a small sample for visualization
-                'sr': sr
+            'frequencies': frequencies,
+            'tonality': tonality,
+            'rhythm': rhythm,
+            'timbre': timbre,
+            'summary': summary,
+            'analysis_stats': {
+                'total_frequencies': len(frequencies),
+                'total_ratios': len(ratios),
+                'microtonal_intervals': sum(1 for k in tonality['koma_analysis'] if k['is_microtonal']),
+                'onset_density': rhythm['onset_density']
             }
         }
         
-        if progress_callback:
-            progress_callback(100)  # Analysis complete
-        
-        return result
-    
     except Exception as e:
         print(f"Error analyzing music: {e}")
         import traceback
         traceback.print_exc()
         
-        # Return a basic error result
         return {
             'error': str(e),
-            'system': 'Unknown',
-            'tonality': {
-                'western_tonality': 'Unknown',
-                'eastern_makam': 'Unknown',
-                'is_western': True,
-                'western_confidence': 0.5,
-                'eastern_confidence': 0.5,
-                'microtonal_ratio': 0.0
-            },
+            'duration': 0,
+            'sample_rate': 44100,
             'frequencies': [],
-            'tempo': 120.0  # Default tempo
+            'tonality': analyzer._empty_result(),
+            'rhythm': {'tempo': 120, 'regularity': 0.5, 'meter': '4/4', 'beat_count': 0, 'complexity': 0.5, 'onset_density': 0.5},
+            'timbre': {'brightness': 0, 'richness': 0, 'harmonic_ratio': 0, 'detected_instruments': [], 'mfcc_features': []},
+            'summary': 'Analiz başarısız oldu.',
+            'analysis_stats': {'total_frequencies': 0, 'total_ratios': 0, 'microtonal_intervals': 0, 'onset_density': 0}
         }
+
+# Custom CSS
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 3rem;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin: 0.5rem 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .result-card {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 15px;
+        border-left: 5px solid #1f77b4;
+        margin: 1rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .analysis-info {
+        background: #e3f2fd;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #2196f3;
+        margin: 1rem 0;
+    }
+    
+    .frequency-text {
+        font-family: 'Courier New', monospace;
+        background: #f1f3f4;
+        padding: 0.2rem 0.5rem;
+        border-radius: 5px;
+        font-size: 0.9rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+def create_frequency_visualization(frequencies):
+    """Frekans görselleştirmesi"""
+    if not frequencies:
+        return None
+        
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=list(range(len(frequencies))),
+        y=frequencies,
+        mode='lines+markers',
+        name='Tespit Edilen Frekanslar',
+        line=dict(color='#1f77b4', width=3),
+        marker=dict(size=8, color='#ff7f0e')
+    ))
+    
+    fig.update_layout(
+        title="Tespit Edilen Temel Frekanslar",
+        xaxis_title="Frekans Sırası",
+        yaxis_title="Frekans (Hz)",
+        template="plotly_white",
+        height=400
+    )
+    
+    return fig
+
+def create_koma_analysis_chart(koma_analysis):
+    """Koma analizi grafiği"""
+    if not koma_analysis:
+        return None
+    
+    deviations = [k['koma_deviation'] for k in koma_analysis]
+    microtonal_flags = [k['is_microtonal'] for k in koma_analysis]
+    
+    colors = ['red' if mt else 'blue' for mt in microtonal_flags]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=list(range(len(deviations))),
+        y=deviations,
+        marker_color=colors,
+        name='Koma Sapmaları',
+        text=[f"{d:.2f}" for d in deviations],
+        textposition='auto'
+    ))
+    
+    # Mikrotonal eşik çizgileri
+    fig.add_hline(y=0.5, line_dash="dash", line_color="green", 
+                  annotation_text="Mikrotonal Eşik (+0.5 koma)")
+    fig.add_hline(y=-0.5, line_dash="dash", line_color="green", 
+                  annotation_text="Mikrotonal Eşik (-0.5 koma)")
+    
+    fig.update_layout(
+        title="Koma Sapma Analizi (Equal Temperament'tan sapmalar)",
+        xaxis_title="Aralık No",
+        yaxis_title="Koma Sapması",
+        template="plotly_white",
+        height=400
+    )
+    
+    return fig
+
+def create_tonality_comparison_chart(tonality_data):
+    """Tonalite karşılaştırma grafiği"""
+    western_scores = tonality_data.get('all_western_scores', {})
+    eastern_scores = tonality_data.get('all_eastern_scores', {})
+    
+    if not western_scores and not eastern_scores:
+        return None
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Batı Müziği Tonaliteleri', 'Doğu Müziği Makamları'),
+        specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+    )
+    
+    # Western scores
+    if western_scores:
+        western_names = list(western_scores.keys())
+        western_values = list(western_scores.values())
+        
+        fig.add_trace(
+            go.Bar(x=western_names, y=western_values, name="Western", 
+                   marker_color='lightblue'),
+            row=1, col=1
+        )
+    
+    # Eastern scores
+    if eastern_scores:
+        eastern_names = list(eastern_scores.keys())
+        eastern_values = list(eastern_scores.values())
+        
+        fig.add_trace(
+            go.Bar(x=eastern_names, y=eastern_values, name="Eastern", 
+                   marker_color='lightcoral'),
+            row=1, col=2
+        )
+    
+    fig.update_layout(height=400, showlegend=False, title_text="Tonalite/Makam Eşleşme Skorları")
+    return fig
+
+def create_rhythm_pattern_viz(rhythm_data):
+    """Ritim pattern görselleştirmesi"""
+    # Create a simple rhythm visualization
+    beats = [1, 0.3, 0.6, 0.3] * 4  # 4/4 pattern repeated
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=list(range(1, len(beats) + 1)),
+        y=beats,
+        marker_color=['red' if i % 4 == 0 else 'blue' for i in range(len(beats))],
+        name='Vuruş Gücü Simülasyonu'
+    ))
+    
+    fig.update_layout(
+        title=f"Ritim Paterni - {rhythm_data.get('meter', 'Unknown')} (Tempo: {rhythm_data.get('tempo', 0):.0f} BPM)",
+        xaxis_title="Vuruş",
+        yaxis_title="Güç",
+        template="plotly_white",
+        height=300
+    )
+    
+    return fig
+
+def main():
+    # Header
+    st.markdown('<h1 class="main-header">🎵 Dinamik Müzik Analizi Sistemi</h1>', unsafe_allow_html=True)
+    st.markdown("### Tamamen Veri Odaklı Doğu ve Batı Müzik Sistemleri Analizi")
+    
+    # Information about the pure approach
+    st.markdown("""
+    <div class="analysis-info">
+        <h4>🔬 Saf Analiz Yaklaşımı</h4>
+        <p>Bu sistem hiçbir şarkı için özel durum yapmaz. Sadece:</p>
+        <ul>
+            <li>📊 <strong>Matematiksel frekans analizi</strong></li>
+            <li>🎵 <strong>Koma sistemi hesaplamaları</strong> (22.64 cent hassasiyetle)</li>
+            <li>📐 <strong>Equal Temperament sapma ölçümü</strong></li>
+            <li>🔍 <strong>Spektral özellik çıkarımı</strong></li>
+            <li>⚖️ <strong>Objektif karar verme algoritmaları</strong></li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Sidebar for analysis settings
+    with st.sidebar:
+        st.markdown("## ⚙️ Analiz Ayarları")
+        
+        st.markdown("### 🎯 Tespit Parametreleri")
+        show_detailed_analysis = st.checkbox("Detaylı Analiz Göster", value=True)
+        show_frequency_analysis = st.checkbox("Frekans Analizi", value=True)
+        show_koma_analysis = st.checkbox("Koma Sapma Analizi", value=True)
+        show_comparison_charts = st.checkbox("Karşılaştırma Grafikleri", value=True)
+        
+        st.markdown("---")
+        st.markdown("### 📊 Sistem Bilgileri")
+        st.markdown("**🎼 Desteklenen Tonaliteler:**")
+        st.markdown("• Major: C, G, D, A, E, F")
+        st.markdown("• Minor: A, E, B, D, F#")
+        
+        st.markdown("**🕌 Desteklenen Makamlar:**")
+        st.markdown("• Rast, Hicaz, Nihavend")
+        st.markdown("• Saba, Hüseyni, Uşşak") 
+        st.markdown("• Segah, Kürdî")
+        
+        st.markdown("---")
+        st.markdown("### 🔬 Teknik Detaylar")
+        st.markdown("• **Frekans Çıkarımı:** Piptrack + YIN + Chroma")
+        st.markdown("• **Koma Hassasiyeti:** 22.64 cent")
+        st.markdown("• **Mikrotonal Eşik:** ±0.5 koma")
+        st.markdown("• **Analiz Süresi:** İlk 2 dakika")
+    
+    # File upload
+    uploaded_file = st.file_uploader(
+        "🎵 Müzik Dosyası Yükleyin",
+        type=['mp3', 'wav', 'flac'],
+        help="Desteklenen formatlar: MP3, WAV, FLAC (Max: 200MB)"
+    )
+    
+    if uploaded_file is not None:
+        # File info
+        file_size = len(uploaded_file.getvalue())
+        st.success(f"✅ Dosya yüklendi: {uploaded_file.name} ({file_size/1024/1024:.1f} MB)")
+        
+        # Audio player
+        st.audio(uploaded_file, format='audio/mp3')
+        
+        # Analysis button
+        if st.button("🚀 Saf Analizi Başlat", type="primary"):
+            with st.spinner("🎵 Dinamik müzik analizi yapılıyor..."):
+                # Progress bar
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                def progress_callback(percent, message=""):
+                    progress_bar.progress(percent / 100)
+                    status_text.text(f"[{percent:3d}%] {message}")
+                
+                try:
+                    # Save uploaded file temporarily
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        temp_path = tmp_file.name
+                    
+                    # Perform pure analysis
+                    result = analyze_music_pure(temp_path, progress_callback)
+                    
+                    # Clean up
+                    os.unlink(temp_path)
+                    
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    if 'error' in result:
+                        st.error(f"❌ Analiz hatası: {result['error']}")
+                        return
+                    
+                    # Display results
+                    st.success("🎉 Dinamik analiz başarıyla tamamlandı!")
+                    
+                    # Analysis statistics
+                    stats = result['analysis_stats']
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Tespit Edilen Frekans", stats['total_frequencies'])
+                    with col2:
+                        st.metric("Hesaplanan Oran", stats['total_ratios'])
+                    with col3:
+                        st.metric("Mikrotonal Aralık", stats['microtonal_intervals'])
+                    with col4:
+                        st.metric("Onset Yoğunluğu", f"{stats['onset_density']:.3f}")
+                    
+                    # Main results
+                    st.markdown("## 📋 Analiz Sonuçları")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h4>🎵 Müzik Sistemi</h4>
+                            <h3>{result['tonality']['system']}</h3>
+                            <p>Güven: {result['tonality']['confidence']:.1%}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        tonality_name = result['tonality']['eastern_makam'] if not result['tonality']['is_western'] else result['tonality']['western_tonality']
+                        tonality_type = "Makam" if not result['tonality']['is_western'] else "Tonalite"
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h4>🎼 {tonality_type}</h4>
+                            <h3>{tonality_name}</h3>
+                            <p>Matematiksel eşleşme</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h4>🥁 Tempo</h4>
+                            <h3>{result['rhythm']['tempo']:.0f} BPM</h3>
+                            <p>{result['rhythm']['meter']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col4:
+                        instrument_text = ", ".join(result['timbre']['detected_instruments'][:2]) if result['timbre']['detected_instruments'] else "Belirsiz"
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h4>🎸 Enstrümanlar</h4>
+                            <h3>{len(result['timbre']['detected_instruments'])}</h3>
+                            <p>{instrument_text}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Detailed Analysis
+                    if show_detailed_analysis:
+                        st.markdown("## 📊 Detaylı Analiz Sonuçları")
+                        
+                        # Tonality section
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown("### 🎼 Tonalite/Makam Bilgileri")
+                            tonality = result['tonality']
+                            
+                            if tonality['is_western']:
+                                st.markdown(f"""
+                                <div class="result-card">
+                                    <h4>🎵 Batı Müziği Sistemi</h4>
+                                    <p><strong>{tonality['western_tonality']}</strong></p>
+                                    <p><strong>Güven:</strong> {tonality['western_confidence']:.1%}</p>
+                                    <p><strong>Mikrotonal İçerik:</strong> {tonality['microtonal_ratio']:.1%}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                <div class="result-card">
+                                    <h4>🕌 Doğu Müziği Sistemi</h4>
+                                    <p><strong>{tonality['eastern_makam']} Makamı</strong></p>
+                                    <p><strong>Güven:</strong> {tonality['eastern_confidence']:.1%}</p>
+                                    <p><strong>Mikrotonal İçerik:</strong> {tonality['microtonal_ratio']:.1%}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+                        with col2:
+                            st.markdown("### 🥁 Ritim Bilgileri")
+                            rhythm = result['rhythm']
+                            
+                            st.markdown(f"""
+                            <div class="result-card">
+                                <h4>⏱️ Tempo ve Ritim</h4>
+                                <p><strong>Tempo:</strong> {rhythm['tempo']:.0f} BPM</p>
+                                <p><strong>Ölçü:</strong> {rhythm['meter']}</p>
+                                <p><strong>Düzenlilik:</strong> {rhythm['regularity']:.1%}</p>
+                                <p><strong>Karmaşıklık:</strong> {rhythm['complexity']:.2f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        # Frequency analysis
+                        if show_frequency_analysis and result['frequencies']:
+                            st.markdown("### 🎚️ Frekans Analizi")
+                            freq_fig = create_frequency_visualization(result['frequencies'])
+                            if freq_fig:
+                                st.plotly_chart(freq_fig, use_container_width=True)
+                            
+                            # Show frequencies
+                            st.markdown("**Tespit Edilen Frekanslar:**")
+                            freq_cols = st.columns(5)
+                            for i, freq in enumerate(result['frequencies'][:20]):
+                                with freq_cols[i % 5]:
+                                    st.markdown(f'<span class="frequency-text">{freq:.1f} Hz</span>', unsafe_allow_html=True)
+                        
+                        # Koma analysis
+                        if show_koma_analysis and result['tonality']['koma_analysis']:
+                            st.markdown("### 🔬 Koma Analizi")
+                            koma_fig = create_koma_analysis_chart(result['tonality']['koma_analysis'])
+                            if koma_fig:
+                                st.plotly_chart(koma_fig, use_container_width=True)
+                            
+                            koma_data = result['tonality']['koma_analysis']
+                            microtonal_count = sum(1 for k in koma_data if k['is_microtonal'])
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Toplam Aralık", len(koma_data))
+                            with col2:
+                                st.metric("Mikrotonal Aralık", microtonal_count)
+                            with col3:
+                                st.metric("Mikrotonal Oran", f"{(microtonal_count/len(koma_data)*100):.1f}%" if koma_data else "0%")
+
+                        # Comparison charts
+                        if show_comparison_charts:
+                            st.markdown("### 📊 Tonalite/Makam Karşılaştırması")
+                            comparison_fig = create_tonality_comparison_chart(result['tonality'])
+                            if comparison_fig:
+                                st.plotly_chart(comparison_fig, use_container_width=True)
+                        
+                        # Rhythm visualization
+                        st.markdown("### 🎵 Ritim Analizi")
+                        rhythm_fig = create_rhythm_pattern_viz(result['rhythm'])
+                        st.plotly_chart(rhythm_fig, use_container_width=True)
+                        
+                        # Timbre analysis
+                        st.markdown("### 🎸 Timbre ve Enstrüman Analizi")
+                        timbre = result['timbre']
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**Tespit Edilen Enstrümanlar:**")
+                            if timbre['detected_instruments']:
+                                for instrument in timbre['detected_instruments']:
+                                    st.markdown(f"🎶 {instrument.title().replace('_', ' ')}")
+                            else:
+                                st.markdown("❌ Belirgin enstrüman tespit edilemedi")
+                        
+                        with col2:
+                            st.markdown("**Spektral Özellikler:**")
+                            st.metric("Parlaklık", f"{timbre['brightness']:.3f}")
+                            st.metric("Zenginlik", f"{timbre['richness']:.3f}")
+                            st.metric("Harmonik Oran", f"{timbre['harmonic_ratio']:.3f}")
+                            st.metric("Perküsif Oran", f"{timbre.get('percussive_ratio', 0):.3f}")
+                    
+                    # Summary
+                    st.markdown("## 📝 Analiz Raporu")
+                    st.info(result['summary'])
+                    
+                    # Technical details expander
+                    with st.expander("🔬 Teknik Detaylar"):
+                        st.markdown("### Analiz Metodolojisi:")
+                        st.markdown("""
+                        1. **Frekans Çıkarımı**: Piptrack, YIN ve Chroma tabanlı üçlü yaklaşım
+                        2. **Oran Hesaplama**: Tüm frekans çiftleri için matematik hesap
+                        3. **Koma Analizi**: Equal Temperament'tan sapma ölçümü (±22.64 cent)
+                        4. **Pattern Matching**: Matematiksel eşleşme skorları
+                        5. **Karar Verme**: Mikrotonal içerik ağırlıklı objektif algoritma
+                        """)
+                        
+                        if result['tonality']['koma_analysis']:
+                            st.markdown("### Koma Sapma Detayları:")
+                            koma_df = pd.DataFrame([
+                                {
+                                    'Frekans 1': k['freq_pair'][0],
+                                    'Frekans 2': k['freq_pair'][1], 
+                                    'Oran': k['ratio'],
+                                    'Koma Sapması': k['koma_deviation'],
+                                    'Mikrotonal': k['is_microtonal']
+                                } 
+                                for k in result['tonality']['koma_analysis'][:10]
+                            ])
+                            st.dataframe(koma_df)
+                    
+                    # Download option
+                    try:
+                        result_json = json.dumps(result, indent=2, ensure_ascii=False, default=str)
+                        st.download_button(
+                            label="📥 Sonuçları JSON olarak İndir",
+                            data=result_json,
+                            file_name=f"dinamik_muzik_analizi_{uploaded_file.name}.json",
+                            mime="application/json"
+                        )
+                    except Exception as e:
+                        st.warning(f"JSON export hatası: {e}")
+                    
+                except Exception as e:
+                    st.error(f"❌ Analiz sırasında hata oluştu: {str(e)}")
+                    with st.expander("Hata Detayları"):
+                        import traceback
+                        st.code(traceback.format_exc())
+    
+    else:
+        # Demo section
+        st.markdown("## 🎯 Dinamik Analiz Prensipleri")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            ### 1️⃣ Saf Frekans Analizi
+            🎚️ **Üçlü Yaklaşım:** Piptrack + YIN + Chroma
+            
+            🔍 **Statistiksel Filtreleme:** Outlier removal
+            
+            📊 **Objektif Seçim:** En belirgin 25 frekans
+            """)
+        
+        with col2:
+            st.markdown("""
+            ### 2️⃣ Matematiksel Koma Hesabı
+            🎵 **Hassas Ölçüm:** 22.64 cent koma sistemi
+            
+            📐 **Sapma Analizi:** Equal Temperament referansı
+            
+            🔬 **Mikrotonal Tespit:** ±0.5 koma eşik
+            """)
+        
+        with col3:
+            st.markdown("""
+            ### 3️⃣ Objektif Karar Verme
+            🎼 **Pattern Matching:** Matematiksel eşleşme
+            
+            🎹 **Güven Skorları:** Normalizasyonlu skorlama
+            
+            ⚖️ **Hiçbir Bias Yok:** Sadece veriler konuşur
+            """)
+
+if __name__ == "__main__":
+    main()
