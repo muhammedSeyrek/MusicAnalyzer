@@ -107,6 +107,20 @@ def main():
                     # Success!
                     st.success("✅ Analysis Complete!")
 
+                    # Genre/Style highlight (if available)
+                    if 'genre' in result and result['genre']:
+                        genre_info = result['genre']
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                                    padding: 1rem; border-radius: 10px; color: white; text-align: center; margin: 1rem 0;">
+                            <h3 style="margin: 0;">🎭 {genre_info['primary_genre']}</h3>
+                            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">
+                                Confidence: {genre_info['confidence']:.0%}
+                                {' • ' + ', '.join(genre_info['all_genres'][:3]) if len(genre_info['all_genres']) > 1 else ''}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
                     # Main Results - Compact
                     col1, col2, col3, col4 = st.columns(4)
 
