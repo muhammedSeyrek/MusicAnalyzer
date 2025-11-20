@@ -142,8 +142,8 @@ Thumbs.db
 temp/
 tmp/
 
-# Streamlit
-.streamlit/
+# Streamlit (but allow config)
+.streamlit/secrets.toml
 
 # Audio uploads (optional - uncomment if needed)
 # static/uploads/*.mp3
