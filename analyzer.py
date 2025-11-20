@@ -976,6 +976,8 @@ def create_detailed_analysis_plots(y, sr, analysis_results):
     
     # 4. Mikrotonalite analizi
     plt.subplot(2, 2, 4)
+    # Extract harmonic component for tonnetz analysis
+    y_harmonic, _ = librosa.effects.hpss(y)
     cents_deviation = librosa.feature.tonnetz(y=y_harmonic, sr=sr)
     librosa.display.specshow(cents_deviation, y_axis='tonnetz')
     plt.colorbar(label='Cent Sapması')
