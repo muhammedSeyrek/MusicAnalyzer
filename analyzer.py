@@ -238,57 +238,54 @@ class PureMusicAnalyzer:
         """
         if not ratios:
             return self._empty_result()
-        
+
         ratio_values = [r['ratio'] for r in ratios]
-        
-        # Analyze Western scales
+
+        # Analyze Western scales with equal treatment
         western_scores = {}
         for scale_name, scale_ratios in self.western_scales.items():
-            score = self._calculate_mathematical_match(ratio_values, scale_ratios)
-            western_scores[scale_name] = score
-        
+            base_score = self._calculate_mathematical_match(ratio_values, scale_ratios)
+            # Western also gets characteristic interval bonus for major/minor patterns
+            char_intervals = self._get_western_characteristic_intervals(scale_name)
+            char_bonus = self._calculate_characteristic_match(ratio_values, char_intervals)
+            western_scores[scale_name] = base_score + char_bonus
+
         # Analyze Eastern makams
         eastern_scores = {}
         for makam_name, makam_data in self.eastern_makams.items():
-            # Base score from ratio matching
             base_score = self._calculate_mathematical_match(ratio_values, makam_data['ratios'])
-            
-            # Bonus for characteristic intervals
             char_bonus = self._calculate_characteristic_match(ratio_values, makam_data['characteristic_intervals'])
-            
-            # Microtonal bonus (Eastern music uses more microtones)
-            microtonal_bonus = self._calculate_microtonal_bonus(ratios)
-            
-            total_score = base_score + char_bonus + microtonal_bonus
-            eastern_scores[makam_name] = total_score
-        
+            eastern_scores[makam_name] = base_score + char_bonus
+
         # Find best matches
         best_western = max(western_scores.items(), key=lambda x: x[1])
         best_eastern = max(eastern_scores.items(), key=lambda x: x[1])
-        
+
         # Koma analysis for final decision
         koma_analysis = self.analyze_koma_deviations_pure(ratios)
         microtonal_ratio = sum(1 for k in koma_analysis if k['is_microtonal']) / len(koma_analysis) if koma_analysis else 0
-        
-        # Pure mathematical decision
-        # If significant microtonal content (>15%), lean towards Eastern
-        # Otherwise, choose based on pure score
-        
+
+        # Improved decision logic
         eastern_confidence = best_eastern[1]
         western_confidence = best_western[1]
-        
-        # Microtonal factor
-        if microtonal_ratio > 0.15:
-            eastern_confidence *= (1 + microtonal_ratio)
-        else:
-            western_confidence *= (1 + (1 - microtonal_ratio) * 0.2)
-        
+
+        # Strong bias based on microtonal content
+        # Western music: <20% microtonal (due to tuning/harmonics)
+        # Eastern music: >30% microtonal (actual quarter tones)
+        if microtonal_ratio < 0.20:
+            # Likely Western - boost Western confidence significantly
+            western_confidence *= (1 + (1 - microtonal_ratio) * 0.8)
+        elif microtonal_ratio > 0.30:
+            # Likely Eastern - boost Eastern confidence
+            eastern_confidence *= (1 + microtonal_ratio * 0.6)
+        # Between 20-30%: let scores decide
+
         # Normalize confidences
         total_conf = eastern_confidence + western_confidence
         if total_conf > 0:
             eastern_confidence /= total_conf
             western_confidence /= total_conf
-        
+
         is_western = western_confidence > eastern_confidence
         
         return {
@@ -328,6 +325,19 @@ class PureMusicAnalyzer:
         
         # Normalize by the number of reference ratios
         return total_score / len(reference_ratios) if reference_ratios else 0.0
+
+    def _get_western_characteristic_intervals(self, scale_name):
+        """
+        Get characteristic intervals for Western scales
+        """
+        # Major scales: Perfect 5th (1.5), Major 3rd (1.26), Major 6th (1.68)
+        if 'Major' in scale_name:
+            return [1.260, 1.498, 1.682]
+        # Minor scales: Perfect 5th (1.5), Minor 3rd (1.19), Minor 6th (1.59)
+        elif 'Minor' in scale_name:
+            return [1.189, 1.498, 1.587]
+        # Default
+        return [1.498]  # Perfect 5th is universal
 
     def _calculate_characteristic_match(self, observed_ratios, characteristic_intervals):
         """
