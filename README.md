@@ -1,104 +1,159 @@
-# Müzik Analiz Uygulaması
+# 🎵 Music Analyzer v2.0
 
-Bu uygulama, müzik dosyalarını analiz ederek tonalite, tempo, ritim, tını gibi özelliklerini belirleyen bir web uygulamasıdır. Hem Batı müzik sistemi hem de Doğu müzik sistemi (makamlar) için gelişmiş pattern recognition teknikleri kullanarak tonalite tespiti yapabilir.
+Production-ready music analysis application using pattern recognition to detect tonality, rhythm, and timbre in both Western and Eastern music systems.
 
-## Özellikler
+## Features
 
-- Müzik sistemini tespit etme (Batı / Doğu)
-- Pattern recognition ile tonalite ve makam analizi
-- Mikrotonal içerik analizi (1/9 aralıklar tespiti)
-- Doğu müziği makamlarına özel aralık analizi
-- Tempo ve ritim analizi
-- Aksak ritim tespiti (7/8, 9/8 gibi Türk müziğinde yaygın ritimleri tespit edebilir)
-- Tını ve enstrüman grubu analizi
-- Doğu müziği enstrümanları tespiti (Oud, Ney, Kanun, vb.)
-- Müzikal örüntü ve tekrarlayan yapıların tespiti
-- Yapısal sınır ve bölüm geçişlerinin tespiti
-- Frekans dağılımı ve ilişkisel analizi
-- MFCC (Mel-Frequency Cepstral Coefficients) analizi
-- Gerçek zamanlı ilerleme takibi
-- Gelişmiş görselleştirmeler (örüntü tekrarlama matrisi, frekans oranları histogramı)
+- 🎼 **Western & Eastern Music Detection** - Automatic detection of Major/Minor scales and Turkish Makams
+- 📐 **Microtonal Analysis** - 22.64 cent precision koma deviation detection
+- 🥁 **Rhythm Analysis** - Tempo, meter, and complex rhythm patterns (including 7/8, 9/8)
+- 🎸 **Instrument Detection** - Spectral analysis for instrument classification
+- ⚡ **Pattern Recognition** - No training required, instant analysis
+- 🌐 **Cloud Ready** - Optimized for Google Cloud Run, AWS, Azure
 
-## Kurulum
+## Quick Start
 
-1. Gerekli kütüphaneleri yükleyin:
+### Local Development
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-2. Uygulamayı çalıştırın:
-
-```bash
+# Run application
 streamlit run app.py
 ```
 
-3. Tarayıcınızda otomatik olarak açılacak olan uygulamayı kullanın.
+### Cloud Deployment
 
-## Sistem Gereksinimleri
+#### Google Cloud Run (Recommended)
 
-- Python 3.7+
-- Streamlit
-- Librosa (ses analizi için)
-- NumPy
-- SciPy
-- scikit-learn (pattern recognition için)
-- Matplotlib
+```bash
+# One-command deployment
+./deploy.sh
 
-## Klasör Yapısı
-
-```
-music_analyzer/
-│
-├── app.py                   # Streamlit uygulaması
-├── analyzer.py              # Müzik analiz fonksiyonları
-├── requirements.txt         # Python bağımlılıkları
-│
-├── static/                  # Statik dosyalar
-│   └── uploads/             # Yüklenen müzik dosyaları için klasör
-│
-└── templates/               # HTML şablonları (varsa)
+# Or manually:
+gcloud run deploy music-analyzer \
+  --source . \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --cpu 2
 ```
 
-## Kullanım
+#### AWS / Azure
 
-1. "Analiz etmek istediğiniz müzik dosyasını seçin" butonuna tıklayarak bir müzik dosyası (.mp3 veya .wav) seçin.
-2. "Analiz Et" butonuna tıklayın ve analiz tamamlanana kadar bekleyin.
-3. Analiz sonuçları ve görselleştirmeler sekmelere ayrılmış şekilde ekranda görüntülenecektir.
+Set environment variable before deploying:
 
-## Teknik Detaylar
+```bash
+# For AWS
+export CLOUD_PROVIDER=aws
 
-### Pattern Recognition İle Tonalite Tespiti
+# For Azure
+export CLOUD_PROVIDER=azure
+```
 
-Uygulama, ses dosyasından elde edilen frekans verilerinde pattern recognition teknikleri kullanarak karakteristik frekans oranlarını ve aralıkları tespit eder. Aşağıdaki özel tekniklerle analiz yapar:
+See `config.py` for provider-specific settings.
 
-- Frekans oranları histogramı oluşturma ve tepe noktalarını tespit etme
-- K-means kümeleme ile baskın frekans oranı gruplarını belirleme
-- 1/9 mikrotonal aralık tespiti
-- Frekans oranı desenlerinin ağırlıklandırılmış analizi
+## Configuration
 
-Bu sayede hem Batı müziği (majör/minör tonaliteler) hem de Doğu müziği (makamlar) için daha doğru analiz yapabilir.
+All settings are in `config.py`:
 
-### Mikrotonal İçerik Analizi
+```python
+# Switch cloud provider
+CLOUD_PROVIDER = 'google'  # or 'aws', 'azure', 'local'
 
-Doğu müziği (özellikle Türk müziği) için önemli olan koma seslerini ve 1/9 aralıklarını tespit ederek, müziğin mikrotonal karakterini belirler. Bu sayede makam tespiti daha doğru bir şekilde yapılabilir.
+# Adjust limits
+MAX_FILE_SIZE_MB = 200
+ANALYSIS_DURATION = 120  # seconds
 
-### Gelişmiş Ritim Analizi
+# Toggle features
+ENABLE_DETAILED_ANALYSIS = True
+ENABLE_JSON_EXPORT = True
+```
 
-Otokorelasyon yöntemi kullanılarak ritim kalıpları tespit edilir. Aksak ritimler (7/8, 9/8) gibi Türk müziğinde yaygın kullanılan ritmik kalıplar özel olarak analiz edilir. Groove özelliklerini tespit ederek müziğin ritmik karakterini belirler.
+## Supported Music Systems
 
-### Tını Analizi ve Enstrüman Tespiti
+**Western Music:**
+- Major scales: C, G, D, A, E, F
+- Minor scales: A, E, B, D, F#
 
-MFCC ve spektral özellikler kullanılarak müziğin tınısal özellikleri belirlenir. Pattern recognition teknikleri kullanılarak enstrüman aileleri ve Doğu müziği enstrümanları (Oud, Ney, Kanun, vb.) tespit edilebilir.
+**Eastern Music (Turkish Makams):**
+- Rast, Hicaz, Nihavend
+- Saba, Hüseyni, Uşşak
+- Segah, Kürdî
 
-### Örüntü ve Yapı Analizi
+## Technical Details
 
-Kroma özellikleri ve tekrarlama matrisi kullanılarak müzikteki tekrarlayan bölümler ve yapısal sınırlar tespit edilir. Bu, müziğin form analizine yardımcı olur.
+### Algorithm
 
-## Destek
+1. **Frequency Extraction**: Piptrack + YIN + Chroma
+2. **Ratio Calculation**: All frequency pairs within octave
+3. **Koma Analysis**: Equal Temperament deviation measurement
+4. **Pattern Matching**: Mathematical score matching
+5. **Decision**: Normalized confidence scoring
 
-Sorunlar ve öneriler için issues bölümünü kullanabilirsiniz.
+### Performance
 
-## Lisans
+- Analysis time: ~30-60 seconds per song
+- Memory usage: ~1.5GB per request
+- Supported formats: MP3, WAV, FLAC
+- Max file size: 200MB (configurable)
+
+## Requirements
+
+- Python 3.11+
+- 2GB RAM recommended
+- ffmpeg, libsndfile1 (for audio processing)
+
+See `requirements.txt` for Python dependencies.
+
+## Project Structure
+
+```
+music-analyzer/
+├── app.py                  # Streamlit application
+├── analyzer.py             # Pattern recognition engine
+├── config.py               # Configuration (cloud-agnostic)
+├── Dockerfile              # Container definition
+├── deploy.sh               # Deployment script
+├── requirements.txt        # Python dependencies
+└── .streamlit/
+    └── config.toml         # Streamlit config
+```
+
+## Environment Variables
+
+```bash
+# Cloud provider
+CLOUD_PROVIDER=google
+
+# Port (auto-detected)
+PORT=8080
+
+# Features
+ENABLE_DETAILED_ANALYSIS=true
+ENABLE_JSON_EXPORT=true
+MAX_FILE_SIZE_MB=200
+
+# Debug
+DEBUG=false
+LOG_LEVEL=INFO
+```
+
+## Deployment Checklist
+
+- [ ] Update `config.py` with cloud provider
+- [ ] Set environment variables
+- [ ] Build Docker image or use source deployment
+- [ ] Configure memory (2GB) and CPU (2 cores)
+- [ ] Set timeout to 600 seconds
+- [ ] Enable unauthenticated access (or configure IAM)
+
+## License
 
 MIT License
+
+## Contributing
+
+Issues and pull requests welcome!

@@ -238,57 +238,96 @@ class PureMusicAnalyzer:
         """
         if not ratios:
             return self._empty_result()
-        
+
         ratio_values = [r['ratio'] for r in ratios]
-        
-        # Analyze Western scales
+
+        # Analyze Western scales with equal treatment
         western_scores = {}
         for scale_name, scale_ratios in self.western_scales.items():
-            score = self._calculate_mathematical_match(ratio_values, scale_ratios)
-            western_scores[scale_name] = score
-        
+            base_score = self._calculate_mathematical_match(ratio_values, scale_ratios)
+            # Western also gets characteristic interval bonus for major/minor patterns
+            char_intervals = self._get_western_characteristic_intervals(scale_name)
+            char_bonus = self._calculate_characteristic_match(ratio_values, char_intervals)
+            western_scores[scale_name] = base_score + char_bonus
+
         # Analyze Eastern makams
         eastern_scores = {}
         for makam_name, makam_data in self.eastern_makams.items():
-            # Base score from ratio matching
             base_score = self._calculate_mathematical_match(ratio_values, makam_data['ratios'])
-            
-            # Bonus for characteristic intervals
             char_bonus = self._calculate_characteristic_match(ratio_values, makam_data['characteristic_intervals'])
-            
-            # Microtonal bonus (Eastern music uses more microtones)
-            microtonal_bonus = self._calculate_microtonal_bonus(ratios)
-            
-            total_score = base_score + char_bonus + microtonal_bonus
-            eastern_scores[makam_name] = total_score
-        
+            eastern_scores[makam_name] = base_score + char_bonus
+
         # Find best matches
         best_western = max(western_scores.items(), key=lambda x: x[1])
         best_eastern = max(eastern_scores.items(), key=lambda x: x[1])
-        
+
         # Koma analysis for final decision
         koma_analysis = self.analyze_koma_deviations_pure(ratios)
         microtonal_ratio = sum(1 for k in koma_analysis if k['is_microtonal']) / len(koma_analysis) if koma_analysis else 0
-        
-        # Pure mathematical decision
-        # If significant microtonal content (>15%), lean towards Eastern
-        # Otherwise, choose based on pure score
-        
+
+        # Multi-criteria decision logic (Academic approach)
         eastern_confidence = best_eastern[1]
         western_confidence = best_western[1]
-        
-        # Microtonal factor
-        if microtonal_ratio > 0.15:
-            eastern_confidence *= (1 + microtonal_ratio)
+
+        # Criterion 1: Pattern matching scores (40% weight)
+        pattern_component_west = western_confidence * 0.4
+        pattern_component_east = eastern_confidence * 0.4
+
+        # Criterion 2: Microtonal content analysis (35% weight)
+        # Western: Low microtonal content (<18% is strong indicator)
+        # Eastern: Higher microtonal content (>28% is strong indicator)
+        if microtonal_ratio < 0.18:
+            # Very likely Western - strong boost
+            microtonal_component_west = (1.0 - microtonal_ratio) * 0.35 * 1.5
+            microtonal_component_east = microtonal_ratio * 0.35
+        elif microtonal_ratio > 0.28:
+            # Very likely Eastern - strong boost
+            microtonal_component_east = microtonal_ratio * 0.35 * 1.4
+            microtonal_component_west = (1.0 - microtonal_ratio) * 0.35
         else:
-            western_confidence *= (1 + (1 - microtonal_ratio) * 0.2)
-        
+            # Ambiguous zone (18-28%) - neutral weighting
+            microtonal_component_west = (1.0 - microtonal_ratio) * 0.35
+            microtonal_component_east = microtonal_ratio * 0.35
+
+        # Criterion 3: Score differential (15% weight)
+        # Higher score difference = more confidence
+        score_diff = abs(western_confidence - eastern_confidence)
+        if western_confidence > eastern_confidence:
+            differential_west = score_diff * 0.15
+            differential_east = 0
+        else:
+            differential_east = score_diff * 0.15
+            differential_west = 0
+
+        # Criterion 4: Consistency check (10% weight)
+        # Check if pattern and microtonal analysis agree
+        pattern_suggests_western = western_confidence > eastern_confidence
+        microtonal_suggests_western = microtonal_ratio < 0.23
+
+        if pattern_suggests_western == microtonal_suggests_western:
+            # Agreement - boost the winning side
+            if pattern_suggests_western:
+                consistency_west = 0.1
+                consistency_east = 0
+            else:
+                consistency_east = 0.1
+                consistency_west = 0
+        else:
+            # Disagreement - neutral
+            consistency_west = consistency_east = 0.05
+
+        # Combine all criteria
+        final_western = pattern_component_west + microtonal_component_west + differential_west + consistency_west
+        final_eastern = pattern_component_east + microtonal_component_east + differential_east + consistency_east
+
         # Normalize confidences
-        total_conf = eastern_confidence + western_confidence
+        total_conf = final_western + final_eastern
         if total_conf > 0:
-            eastern_confidence /= total_conf
-            western_confidence /= total_conf
-        
+            western_confidence = final_western / total_conf
+            eastern_confidence = final_eastern / total_conf
+        else:
+            western_confidence = eastern_confidence = 0.5
+
         is_western = western_confidence > eastern_confidence
         
         return {
@@ -328,6 +367,19 @@ class PureMusicAnalyzer:
         
         # Normalize by the number of reference ratios
         return total_score / len(reference_ratios) if reference_ratios else 0.0
+
+    def _get_western_characteristic_intervals(self, scale_name):
+        """
+        Get characteristic intervals for Western scales
+        """
+        # Major scales: Perfect 5th (1.5), Major 3rd (1.26), Major 6th (1.68)
+        if 'Major' in scale_name:
+            return [1.260, 1.498, 1.682]
+        # Minor scales: Perfect 5th (1.5), Minor 3rd (1.19), Minor 6th (1.59)
+        elif 'Minor' in scale_name:
+            return [1.189, 1.498, 1.587]
+        # Default
+        return [1.498]  # Perfect 5th is universal
 
     def _calculate_characteristic_match(self, observed_ratios, characteristic_intervals):
         """
@@ -581,6 +633,150 @@ class PureMusicAnalyzer:
         
         return instruments
 
+    def detect_genre_style(self, tonality_result, rhythm_result, timbre_result):
+        """
+        Pattern recognition based genre/style detection
+
+        Uses multi-feature analysis:
+        - Music system (Western/Eastern)
+        - Tempo and meter
+        - Instrumentation
+        - Harmonic/percussive balance
+        - Spectral characteristics
+        """
+        genres = []
+        confidence_scores = {}
+
+        is_western = tonality_result.get('is_western', True)
+        tempo = rhythm_result.get('tempo', 120)
+        meter = rhythm_result.get('meter', '4/4')
+        instruments = timbre_result.get('detected_instruments', [])
+        harmonic_ratio = timbre_result.get('harmonic_ratio', 0.5)
+        percussive_ratio = timbre_result.get('percussive_ratio', 0.5)
+        brightness = timbre_result.get('brightness', 0.5)
+
+        # Western Genres
+        if is_western:
+            # Rock/Metal indicators
+            if 'electric_guitar' in instruments or 'drums' in instruments:
+                rock_score = 0.0
+                if 'electric_guitar' in instruments:
+                    rock_score += 0.4
+                if 'drums' in instruments:
+                    rock_score += 0.3
+                if 80 <= tempo <= 140:
+                    rock_score += 0.2
+                if brightness > 0.5:
+                    rock_score += 0.1
+
+                if rock_score > 0.5:
+                    genres.append('Rock')
+                    confidence_scores['Rock'] = rock_score
+
+            # Classical indicators
+            if 'piano' in instruments or (harmonic_ratio > 0.75 and percussive_ratio < 0.3):
+                classical_score = 0.0
+                if harmonic_ratio > 0.75:
+                    classical_score += 0.4
+                if percussive_ratio < 0.3:
+                    classical_score += 0.2
+                if 'piano' in instruments:
+                    classical_score += 0.3
+                if tempo < 100 or meter in ['3/4', '6/8']:
+                    classical_score += 0.1
+
+                if classical_score > 0.5:
+                    genres.append('Classical')
+                    confidence_scores['Classical'] = classical_score
+
+            # Pop/Ballad indicators
+            if 60 <= tempo <= 100 and meter == '4/4':
+                pop_score = 0.3
+                if harmonic_ratio > 0.6:
+                    pop_score += 0.3
+                if 'acoustic_guitar' in instruments or 'piano' in instruments:
+                    pop_score += 0.2
+                if brightness < 0.6:
+                    pop_score += 0.2
+
+                if pop_score > 0.5 and 'Rock' not in genres:
+                    genres.append('Pop/Ballad')
+                    confidence_scores['Pop/Ballad'] = pop_score
+
+            # Jazz indicators
+            if 'brass' in instruments and tempo > 100:
+                jazz_score = 0.5
+                if brightness > 0.6:
+                    jazz_score += 0.3
+                if rhythm_result.get('complexity', 0) > 0.6:
+                    jazz_score += 0.2
+
+                if jazz_score > 0.6:
+                    genres.append('Jazz')
+                    confidence_scores['Jazz'] = jazz_score
+
+        # Eastern/Turkish Genres
+        else:
+            microtonal_ratio = tonality_result.get('microtonal_ratio', 0)
+
+            # Turkish Classical Music indicators
+            if microtonal_ratio > 0.25:
+                turkish_classical_score = 0.0
+                if 'ud' in instruments or 'ney' in instruments or 'kanun' in instruments:
+                    turkish_classical_score += 0.5
+                if microtonal_ratio > 0.3:
+                    turkish_classical_score += 0.3
+                if meter in ['9/8', '7/8', '10/8']:
+                    turkish_classical_score += 0.2
+
+                if turkish_classical_score > 0.5:
+                    genres.append('Turkish Classical')
+                    confidence_scores['Turkish Classical'] = turkish_classical_score
+
+            # Turkish Folk indicators
+            if tempo > 90 and meter in ['9/8', '7/8']:
+                folk_score = 0.4
+                if 'drums' in instruments or percussive_ratio > 0.4:
+                    folk_score += 0.3
+                if brightness > 0.4:
+                    folk_score += 0.3
+
+                if folk_score > 0.6:
+                    genres.append('Turkish Folk')
+                    confidence_scores['Turkish Folk'] = folk_score
+
+            # Arabesque/Özgün indicators
+            if 60 <= tempo <= 100 and harmonic_ratio > 0.6:
+                arabesque_score = 0.3
+                if microtonal_ratio > 0.2:
+                    arabesque_score += 0.4
+                if meter == '4/4':
+                    arabesque_score += 0.3
+
+                if arabesque_score > 0.6:
+                    genres.append('Arabesque')
+                    confidence_scores['Arabesque'] = arabesque_score
+
+        # Default genre if nothing detected
+        if not genres:
+            if is_western:
+                genres = ['Western Music']
+                confidence_scores['Western Music'] = 0.5
+            else:
+                genres = ['Eastern Music']
+                confidence_scores['Eastern Music'] = 0.5
+
+        # Get primary genre (highest confidence)
+        primary_genre = max(confidence_scores.items(), key=lambda x: x[1])[0] if confidence_scores else genres[0]
+        primary_confidence = confidence_scores.get(primary_genre, 0.5)
+
+        return {
+            'primary_genre': primary_genre,
+            'all_genres': genres,
+            'confidence': float(primary_confidence),
+            'genre_scores': {k: float(v) for k, v in confidence_scores.items()}
+        }
+
     def _empty_result(self):
         """Boş sonuç"""
         return {
@@ -639,19 +835,27 @@ def analyze_music_pure(filepath, progress_callback=None):
         
         # Timbre analysis
         timbre = analyzer.analyze_timbre_pure(y, sr)
-        
+
+        if progress_callback:
+            progress_callback(95, "Genre/tür tespiti...")
+
+        # Genre/Style detection
+        genre_result = analyzer.detect_genre_style(tonality, rhythm, timbre)
+
         if progress_callback:
             progress_callback(100, "Analiz tamamlandı!")
-        
+
         # Create summary
         system_name = tonality['system']
         main_scale = tonality['eastern_makam'] if not tonality['is_western'] else tonality['western_tonality']
         confidence = tonality['confidence']
-        
+
         instruments_str = ', '.join(timbre['detected_instruments']) if timbre['detected_instruments'] else 'Tespit edilemedi'
-        
+        genre_str = genre_result['primary_genre']
+
         summary = f"""🎵 Müzik Sistemi: {system_name} (Güven: {confidence:.1%})
 🎼 {"Makam" if not tonality['is_western'] else "Tonalite"}: {main_scale}
+🎭 Tür/Genre: {genre_str} (Güven: {genre_result['confidence']:.1%})
 🥁 Tempo: {rhythm['tempo']:.0f} BPM - {rhythm['meter']}
 🎸 Enstrümanlar: {instruments_str}
 🔬 Mikrotonal İçerik: %{tonality['microtonal_ratio']*100:.1f}
@@ -664,6 +868,7 @@ def analyze_music_pure(filepath, progress_callback=None):
             'tonality': tonality,
             'rhythm': rhythm,
             'timbre': timbre,
+            'genre': genre_result,
             'summary': summary,
             'analysis_stats': {
                 'total_frequencies': len(frequencies),
