@@ -1,6 +1,6 @@
 # 🎵 Music Analyzer v2.0
 
-Production-ready music analysis application using pattern recognition to detect tonality, rhythm, and timbre in both Western and Eastern music systems.
+Production-ready music analysis application with modern React frontend and FastAPI backend. Uses advanced pattern recognition to detect tonality, rhythm, and timbre in both Western and Eastern music systems.
 
 ## Features
 
@@ -15,12 +15,25 @@ Production-ready music analysis application using pattern recognition to detect 
 
 ### Local Development
 
+**Backend:**
 ```bash
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Run application
-streamlit run app.py
+# Run API server
+python api.py
+# Server runs on http://localhost:8080
+```
+
+**Frontend:**
+```bash
+# Install Node dependencies
+cd frontend
+npm install
+
+# Run dev server
+npm run dev
+# Frontend runs on http://localhost:3000
 ```
 
 ### Cloud Deployment
@@ -83,15 +96,30 @@ ENABLE_JSON_EXPORT = True
 - Saba, Hüseyni, Uşşak
 - Segah, Kürdî
 
-## Technical Details
+## Architecture
+
+### Frontend
+- **React 18** with Vite for fast builds
+- **Tailwind CSS** for styling
+- **Framer Motion** for smooth animations
+- **Glassmorphism** design with gradient mesh effects
+- Drag & drop file upload with real-time progress
+
+### Backend
+- **FastAPI** REST API with async support
+- **Uvicorn** ASGI server
+- Pattern recognition music analysis
+- Automatic genre/style detection
+- Multi-criteria decision framework
 
 ### Algorithm
 
 1. **Frequency Extraction**: Piptrack + YIN + Chroma
 2. **Ratio Calculation**: All frequency pairs within octave
 3. **Koma Analysis**: Equal Temperament deviation measurement
-4. **Pattern Matching**: Mathematical score matching
-5. **Decision**: Normalized confidence scoring
+4. **Multi-Criteria Decision**: Pattern matching (40%) + Microtonal (35%) + Stats (25%)
+5. **Genre Detection**: Rule-based pattern recognition
+6. **Confidence Scoring**: Normalized multi-factor confidence
 
 ### Performance
 
@@ -99,6 +127,7 @@ ENABLE_JSON_EXPORT = True
 - Memory usage: ~1.5GB per request
 - Supported formats: MP3, WAV, FLAC
 - Max file size: 200MB (configurable)
+- Frontend bundle: ~200KB gzipped
 
 ## Requirements
 
@@ -112,14 +141,26 @@ See `requirements.txt` for Python dependencies.
 
 ```
 music-analyzer/
-├── app.py                  # Streamlit application
-├── analyzer.py             # Pattern recognition engine
-├── config.py               # Configuration (cloud-agnostic)
-├── Dockerfile              # Container definition
-├── deploy.sh               # Deployment script
-├── requirements.txt        # Python dependencies
-└── .streamlit/
-    └── config.toml         # Streamlit config
+├── api.py                      # FastAPI backend
+├── analyzer.py                 # Pattern recognition engine
+├── academic_analyzer.py        # Academic-grade analysis
+├── config.py                   # Configuration (cloud-agnostic)
+├── app.py                      # Legacy Streamlit app
+├── Dockerfile                  # Multi-stage container build
+├── deploy.sh                   # Cloud Run deployment script
+├── requirements.txt            # Python dependencies
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── ResultsDisplay.jsx
+    │   │   └── WaveformBackground.jsx
+    │   ├── App.jsx             # Main React app
+    │   ├── App.css             # Custom styles
+    │   └── main.jsx
+    ├── index.html
+    ├── vite.config.js
+    ├── tailwind.config.js
+    └── package.json
 ```
 
 ## Environment Variables

@@ -1,7 +1,24 @@
-# Use Python 3.11 slim image
+# Multi-stage build for React + FastAPI
+# Stage 1: Build React frontend
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy frontend package files
+COPY frontend/package.json frontend/package-lock.json* ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build React app
+RUN npm run build
+
+# Stage 2: Python backend + serve frontend
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies for audio processing
@@ -10,6 +27,7 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     gcc \
     g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -18,21 +36,27 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY . .
+# Copy Python application files
+COPY analyzer.py .
+COPY academic_analyzer.py .
+COPY api.py .
+COPY config.py .
 
-# Expose port for Cloud Run
+# Copy built frontend from stage 1
+COPY --from=frontend-builder /frontend/dist ./frontend/dist
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+uvicorn api:app --host 0.0.0.0 --port $PORT\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Expose port
 ENV PORT=8080
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK CMD curl --fail http://localhost:8080/_stcore/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl --fail http://localhost:$PORT/api/health || exit 1
 
-# Run Streamlit
-CMD streamlit run app.py \
-    --server.port=$PORT \
-    --server.address=0.0.0.0 \
-    --server.headless=true \
-    --server.enableCORS=false \
-    --server.enableXsrfProtection=false \
-    --browser.gatherUsageStats=false
+# Run the application
+CMD ["/app/start.sh"]
